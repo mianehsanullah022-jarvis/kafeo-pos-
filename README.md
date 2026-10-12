@@ -115,6 +115,11 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 
 **Settings (owner)** — GST/PRA tax for cash and for card/wallets, prices-include-tax option, PRA/NTN number for receipts, service charge %, delivery fee, rounding, tables, discount limit for cashiers, quick discount buttons, discount reasons, banks, loyalty rule, Buy More Save More, riders.
 
+### Receipts & kitchen tickets
+- **Kitchen ticket (KOT)** prints automatically when you press **Add order** or **Pay** on a new order — big text, no prices, table in large letters, item notes highlighted, separate slips for **Kitchen** and **Bar / Coffee**. When you add items to a running bill, only the **new items** print, marked **ADD-ON**. Reprint any time with the **KOT** button on a bill or the printer icon on a kitchen ticket.
+- **Customer receipt** prints on payment: Qty / Item / Rate / Amount, discount with reason, service charge, tax, total, cash received and change, the customer's loyalty stamps, and your thank-you message. Reprints say **REPRINT**; unpaid bills say **BILL — PLEASE PAY AT COUNTER**.
+- Switch these on/off and change the thank-you message in **Settings → Printing**; use **Test receipt / Test kitchen ticket** to check your printer.
+
 ### Printing receipts
 Any printer works through the browser's print dialog. For an 80mm thermal printer: install its driver, set it as the default printer, and in Chrome's print dialog choose *Margins: None* once — Chrome remembers it.
 

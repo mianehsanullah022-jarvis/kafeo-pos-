@@ -336,20 +336,53 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
 #toast .t.err { background: var(--warn); }
 #toast .t button { min-height: 36px; border-radius: 9px; border: 0; padding: 0 12px; background: var(--gold); color: var(--ink); font-weight: 800; }
 
-/* ---------- Print (80mm receipt) ---------- */
+/* ---------- Print: 80mm receipts & kitchen tickets ---------- */
 #print-area { display: none; }
+.kprint { margin-left: 6px; width: 36px; height: 32px; border-radius: 8px; border: 1px solid #4A3D35; background: transparent; color: var(--gold); display: grid; place-items: center; }
 @media print {
-  @page { size: 80mm auto; margin: 3mm; }
-  body { background: #fff; }
+  @page { size: 80mm auto; margin: 0; }
+  html, body { background: #fff !important; height: auto; }
   body > *:not(#print-area) { display: none !important; }
   #print-area { display: block !important; }
-  .rcpt { width: 72mm; font-family: var(--mono); font-size: 11px; color: #000; }
-  .rcpt .c { text-align: center; }
-  .rcpt .brand { font-family: var(--display); font-size: 26px; letter-spacing: 3px; }
-  .rcpt hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
-  .rcpt .r { display: flex; justify-content: space-between; gap: 6px; }
-  .rcpt .big { font-size: 15px; font-weight: 700; }
-  .rcpt .sm { font-size: 10px; }
+  .slip { width: 72mm; margin: 0 auto; padding: 4mm 0 8mm; font-family: var(--mono); font-size: 11.5px; line-height: 1.4; color: #000; break-after: page; page-break-after: always; }
+  .slip:last-child { break-after: auto; page-break-after: auto; }
+  .slip .c { text-align: center; }
+  .slip .right { text-align: right; }
+  .slip .sm { font-size: 10px; }
+  .slip .r { display: flex; justify-content: space-between; gap: 8px; }
+  .slip .r > span:last-child { text-align: right; white-space: nowrap; }
+
+  /* customer receipt */
+  .rcpt .brand { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: 5px; line-height: 1; }
+  .rcpt .tagline { font-size: 8.5px; letter-spacing: 2.5px; margin: 3px 0 6px; }
+  .rcpt .title { margin: 8px 0 6px; padding: 5px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; text-align: center; font-weight: 700; letter-spacing: 1px; font-size: 12px; }
+  .rcpt .meta { padding-bottom: 6px; border-bottom: 1px dashed #000; }
+  .rcpt .items { padding: 6px 0; border-bottom: 1px dashed #000; }
+  .rcpt .ih, .rcpt .ir { display: grid; grid-template-columns: 6mm 1fr 12mm 14mm; gap: 4px; }
+  .rcpt .ih { font-size: 9.5px; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; }
+  .rcpt .ih span:nth-child(n+3), .rcpt .ir span:nth-child(n+3) { text-align: right; }
+  .rcpt .ir { padding: 2px 0; }
+  .rcpt .ir i { display: block; font-style: normal; font-size: 9.5px; }
+  .rcpt .totals { padding: 6px 0; }
+  .rcpt .grand { margin: 5px 0; padding: 5px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; font-size: 16px; font-weight: 700; }
+  .rcpt .loyal { margin: 6px 0; padding: 6px; border: 1px solid #000; border-radius: 4px; text-align: center; font-weight: 700; font-size: 10.5px; }
+  .rcpt .loyal .dots { display: flex; justify-content: center; gap: 5px; margin: 4px 0; }
+  .rcpt .loyal .dots span { width: 11px; height: 11px; border: 1.5px solid #000; border-radius: 50%; }
+  .rcpt .loyal .dots span.on { background: #000; }
+  .rcpt .foot { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #000; }
+  .rcpt .thanks { font-weight: 700; font-size: 11.5px; margin-bottom: 2px; }
+
+  /* kitchen ticket */
+  .kot { font-size: 13px; }
+  .kot .kot-head { display: flex; justify-content: space-between; background: #000; color: #fff; padding: 4px 6px; font-weight: 700; font-size: 15px; letter-spacing: 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .kot .kot-addon { margin-top: 4px; border: 2px solid #000; text-align: center; font-weight: 700; padding: 3px; }
+  .kot .kot-where { text-align: center; font-size: 26px; font-weight: 700; padding: 6px 0 2px; letter-spacing: 1px; }
+  .kot .kot-cust { font-size: 13px; letter-spacing: 0; }
+  .kot .kot-items { margin: 6px 0; padding: 6px 0; border-top: 2px solid #000; border-bottom: 2px solid #000; display: flex; flex-direction: column; gap: 6px; }
+  .kot .ki { display: flex; gap: 8px; font-size: 16px; font-weight: 700; line-height: 1.25; }
+  .kot .ki b { min-width: 9mm; font-size: 18px; }
+  .kot .ki i { display: block; font-style: normal; font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .kot .kot-note { border: 1.5px dashed #000; padding: 4px 6px; margin: 4px 0; font-weight: 700; font-size: 13px; }
 }
 
 /* ---------- Medium screens (small laptops / tablets) ---------- */

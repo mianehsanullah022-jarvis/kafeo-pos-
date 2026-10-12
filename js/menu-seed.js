@@ -147,6 +147,11 @@ export const DEFAULT_SETTINGS = {
   discount_reasons: ['Bank / card offer', 'Friend & family', 'Regular customer', 'Staff meal', 'Complaint / recovery', 'Owner special'],
   banks: ['HBL', 'Meezan', 'UBL', 'MCB', 'Alfalah', 'Standard Chartered'],
   delivery_fee: 0,
+  // Printing
+  kot_auto: true,                // print a kitchen ticket when an order is added / paid
+  kot_split: true,               // separate slips for kitchen and bar
+  receipt_footer: 'Thank you for visiting KAFEO — see you again!',
+  receipt_loyalty: true,         // show the customer's stamps on the receipt
   loyalty_stamps: 5,
   loyalty_discount_pct: 50,
   tables: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'H1', 'H2'],

@@ -475,7 +475,7 @@ function orderFromState(method, paid, payExtra = {}) {
   const p = cleanPhone(S.phone);
   const prev = S.editing;
   const items = S.cart.map((l) => {
-    const added = l.sentQty ? Math.max(0, l.qty - l.sentQty) : 0;
+    const added = prev ? (l.sentQty ? Math.max(0, l.qty - l.sentQty) : l.qty) : 0;
     return { id: l.id, name: l.name, price: l.price, qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, added };
   });
   const anyAdded = items.some((i) => i.added > 0) || (prev && items.some((i) => !prev.items.find((x) => x.name === i.name)));
@@ -784,7 +784,7 @@ async function completePayment() {
   const extra = { cash_received: m.method === 'Cash' ? received : 0, change_due: m.method === 'Cash' ? received - bill.total : 0 };
   try { localStorage.setItem('kafeo-print', m.print ? '1' : '0'); } catch { /* ignore */ }
   const btn = $('#p-go'); if (btn) btn.disabled = true;
-  const print = m.print, target = m.target;
+  const print = m.print, target = m.target, wasEdit = !!S.editing;
   let row;
   if (target) row = await run(() => payExisting(target, m.method, extra));
   else row = await saveOrder(m.method, extra);
@@ -792,8 +792,9 @@ async function completePayment() {
   closeModal();
   renderBillsBadge();
   if (S.route !== 'order') renderScreen();
-  toast(`Order #${row.id} paid by ${row.payment}${row.change_due ? ` · change ${fmt(row.change_due)}` : ''}`, { action: { label: 'Print receipt', fn: () => printReceipt(row) } });
-  if (print) printReceipt(row);
+  toast(`Order #${row.id} paid by ${row.payment}${row.change_due ? ` · change ${fmt(row.change_due)}` : ''}`, { action: { label: 'Print receipt', fn: () => printReceipt(row, { reprint: true }) } });
+  // New order paid at the counter → kitchen ticket too. Paying a running bill → receipt only.
+  await printAfterSave(row, { kot: !target, onlyNew: wasEdit, receipt: print });
 }
 
 // =====================================================================
@@ -853,6 +854,7 @@ function renderOrders(el) {
           <button type="button" class="btn btn-primary btn-lg" data-act="payOpen" data-id="${o.id}">Take payment</button>
           <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items</button>
           <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
+          <button type="button" class="btn" data-act="printKot" data-id="${o.id}" aria-label="Reprint kitchen ticket for order ${o.id}">KOT</button>
           ${isOwner() ? `<button type="button" class="btn btn-danger" data-act="cancelOrder" data-id="${o.id}" aria-label="Cancel order ${o.id}">${icon('x', 18)}</button>` : ''}
         </div>
       </article>`).join('') : `<div class="empty panel">No running ${f === 'all' ? '' : TYPE_LABEL[f].toLowerCase() + ' '}orders. Use <b>+ New order</b> → add items → <b>Add order</b>.</div>`}</div>`
@@ -896,7 +898,7 @@ function ticketK(o, items) {
   else if (o.type === 'deliv') btn = '<span class="tag dark">Waiting for rider</span>';
   else btn = `<button type="button" class="btn kbtn-done" data-act="kstatus" data-id="${o.id}" data-v="done">${o.type === 'take' ? 'Picked up' : 'Served'}</button>`;
   return `<article class="ktk ${late ? 'late' : ''}">
-    <div class="row"><span class="no">#${o.id}</span><span class="tag dark">${where}</span><span class="age">${age} min</span></div>
+    <div class="row"><span class="no">#${o.id}</span><span class="tag dark">${where}</span><span class="age">${age} min</span><button type="button" class="kprint" data-act="printKot" data-id="${o.id}" aria-label="Print kitchen ticket">${icon('print', 16)}</button></div>
     ${items.map((i) => `<div class="it ${i.added ? 'added' : ''}"><b>${i.qty}×</b><span>${esc(i.name)}${i.added ? ` <em class="tag new">+${i.added} NEW</em>` : ''}${i.note ? `<small>${esc(i.note)}</small>` : ''}</span></div>`).join('')}
     ${o.notes ? `<div class="knote">Note: ${esc(o.notes)}</div>` : ''}
     ${o.reward ? `<div class="knote">Add free: ${esc(o.reward)}</div>` : ''}
@@ -1190,6 +1192,13 @@ function renderSettings(el) {
         <label class="field">Banks for card offers (comma separated)<input name="banks" value="${esc((s.banks || []).join(', '))}"></label>
       </div>
       <label class="field">Discount reasons — one per line<textarea name="discount_reasons">${esc((s.discount_reasons || []).join('\n'))}</textarea></label>
+      <h2>Printing</h2>
+      <label class="check"><input type="checkbox" name="kot_auto" ${s.kot_auto !== false ? 'checked' : ''}> Print a kitchen ticket (KOT) automatically when an order is added or paid</label>
+      <label class="check"><input type="checkbox" name="kot_split" ${s.kot_split !== false ? 'checked' : ''}> Separate tickets for Kitchen and Bar / Coffee</label>
+      <label class="check"><input type="checkbox" name="receipt_loyalty" ${s.receipt_loyalty !== false ? 'checked' : ''}> Show the customer's loyalty stamps on the receipt</label>
+      <label class="field">Message at the bottom of the receipt<input name="receipt_footer" value="${esc(s.receipt_footer)}" maxlength="120"></label>
+      <div class="row wrap"><button type="button" class="btn" data-act="testPrint" data-v="receipt">${icon('print', 18)} Test receipt</button>
+        <button type="button" class="btn" data-act="testPrint" data-v="kot">${icon('print', 18)} Test kitchen ticket</button></div>
       <h2>Loyalty</h2>
       <div class="cols">
         <label class="field">Stamps for a reward<input name="loyalty_stamps" type="number" min="2" max="20" value="${esc(s.loyalty_stamps)}"></label>
@@ -1235,36 +1244,105 @@ function openAccount() {
 // =====================================================================
 // PRINTING (80mm thermal or any printer)
 // =====================================================================
-function receiptHtml(o) {
-  const when = new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const where = o.type === 'dine' ? `Table ${esc(o.table_no)}` : TYPE_LABEL[o.type];
+const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
+const whereText = (o) => o.type === 'dine' ? `TABLE ${esc(o.table_no)}` : o.type === 'take' ? 'TAKEAWAY' : 'DELIVERY';
+
+// Customer receipt (paid) or bill (unpaid). opts: { reprint, customer }
+function receiptHtml(o, opts = {}) {
+  const s = S.settings;
   const d = o.meta?.discount;
-  const inclusive = o.meta?.inclusive ?? !!S.settings.prices_include_tax;
-  return `<div class="rcpt">
-    <div class="c"><div class="brand">KAFEO</div><div class="sm">Coffee • Food • Motivation</div><div class="sm">${esc(CAFE.address)}<br>${esc(CAFE.phone)}</div>
-      ${S.settings.tax_number ? `<div class="sm">PRA/NTN: ${esc(S.settings.tax_number)}</div>` : ''}</div>
-    <hr><div class="r"><span>Order #${o.id}</span><span>${where}</span></div><div class="r sm"><span>${when}</span><span>${o.paid ? 'PAID' : 'BILL — UNPAID'}</span></div>
-    ${o.customer_name || o.customer_phone ? `<div class="sm">${esc(o.customer_name)} ${esc(o.customer_phone)}</div>` : ''}
-    ${o.address ? `<div class="sm">${esc(o.address)}</div>` : ''}
-    <hr>${o.items.map((l) => {
-      const ld = d?.scope === 'items' ? lineDiscount(l) : 0;
-      return `<div class="r"><span>${l.qty} × ${esc(l.name)}</span><span>${num(l.price * l.qty)}</span></div>${ld ? `<div class="r sm"><span>&nbsp;&nbsp;discount</span><span>-${num(ld)}</span></div>` : ''}`;
-    }).join('')}
-    ${o.reward ? `<div class="r"><span>1 × ${esc(o.reward)}</span><span>0</span></div>` : ''}
-    <hr><div class="r"><span>Subtotal</span><span>${num(o.subtotal)}</span></div>
-    ${Number(o.discount) ? `<div class="r"><span>Discount${d?.scope === 'bill' && d.type === 'pct' ? ' ' + num(d.value) + '%' : ''}${o.discount_label ? ' (' + esc(o.discount_label) + ')' : ''}</span><span>-${num(o.discount)}</span></div>` : ''}
-    ${Number(o.service_charge) ? `<div class="r"><span>Service charge</span><span>${num(o.service_charge)}</span></div>` : ''}
-    ${Number(o.tax) ? `<div class="r"><span>${inclusive ? 'Incl. tax' : 'Tax'} ${num(o.tax_rate)}%</span><span>${num(o.tax)}</span></div>` : ''}
-    ${Number(o.delivery_fee) ? `<div class="r"><span>Delivery</span><span>${num(o.delivery_fee)}</span></div>` : ''}
-    ${Number(o.round_off) ? `<div class="r"><span>Round off</span><span>${Number(o.round_off) > 0 ? '' : '-'}${num(Math.abs(o.round_off))}</span></div>` : ''}
-    <div class="r big"><span>TOTAL</span><span>Rs ${num(o.total)}</span></div>
-    ${o.paid ? `<div class="r"><span>Paid by</span><span>${esc(o.payment)}</span></div>` : ''}
-    ${Number(o.cash_received) ? `<div class="r"><span>Cash received</span><span>${num(o.cash_received)}</span></div><div class="r"><span>Change</span><span>${num(o.change_due)}</span></div>` : ''}
-    <hr><div class="c sm">Thank you for visiting KAFEO<br>Order on WhatsApp: ${esc(CAFE.phone)}<br>${esc(CAFE.web)} · ${esc(CAFE.insta)}</div>
+  const inclusive = o.meta?.inclusive ?? !!s.prices_include_tax;
+  const c = opts.customer;
+  const qtyTotal = o.items.reduce((a, l) => a + l.qty, 0);
+  const row = (l, r, cls = '') => `<div class="r ${cls}"><span>${l}</span><span>${r}</span></div>`;
+  return `<div class="slip rcpt">
+    <div class="c">
+      <div class="brand">KAFEO</div>
+      <div class="tagline">COFFEE • FOOD • MOTIVATION</div>
+      <div class="sm">${esc(CAFE.address)}</div>
+      <div class="sm">Tel / WhatsApp: ${esc(CAFE.phone)}</div>
+      ${s.tax_number ? `<div class="sm">PRA / NTN: ${esc(s.tax_number)}</div>` : ''}
+    </div>
+    <div class="title">${o.status === 'cancelled' ? 'CANCELLED' : o.paid ? 'SALES RECEIPT' : 'BILL — PLEASE PAY AT COUNTER'}${opts.reprint ? '<br><span class="sm">*** REPRINT ***</span>' : ''}</div>
+    <div class="meta">
+      ${row(`Order <b>#${o.id}</b>`, `<b>${whereText(o)}</b>`)}
+      ${row(fmtDate(o.created_at), fmtTime(o.paid ? o.updated_at || o.created_at : o.created_at))}
+      ${o.meta?.by ? row('Cashier', esc(o.meta.by)) : ''}
+      ${o.customer_name || o.customer_phone ? row('Customer', `${esc(o.customer_name)} ${esc(o.customer_phone)}`.trim()) : ''}
+      ${o.address ? `<div class="sm">Deliver to: ${esc(o.address)}</div>` : ''}
+    </div>
+    <div class="items">
+      <div class="ih"><span>Qty</span><span>Item</span><span>Rate</span><span>Amount</span></div>
+      ${o.items.map((l) => {
+        const ld = d?.scope === 'items' ? lineDiscount(l) : 0;
+        return `<div class="ir"><span>${l.qty}</span><span>${esc(l.name)}${l.note ? `<i>${esc(l.note)}</i>` : ''}${ld ? `<i>discount −${num(ld)}</i>` : ''}</span><span>${num(l.price)}</span><span>${num(l.price * l.qty - ld)}</span></div>`;
+      }).join('')}
+      ${o.reward ? `<div class="ir"><span>1</span><span>${esc(o.reward)}<i>Buy More, Save More</i></span><span>0</span><span>0</span></div>` : ''}
+      <div class="sm right">${o.items.length} item${o.items.length === 1 ? '' : 's'} · ${qtyTotal} pcs</div>
+    </div>
+    <div class="totals">
+      ${row('Subtotal', num(o.subtotal))}
+      ${Number(o.discount) ? row(`Discount${d?.scope === 'bill' && d.type === 'pct' ? ' ' + num(d.value) + '%' : ''}${o.discount_label ? `<br><span class="sm">${esc(o.discount_label)}</span>` : ''}`, '−' + num(o.discount)) : ''}
+      ${Number(o.service_charge) ? row('Service charge', num(o.service_charge)) : ''}
+      ${Number(o.tax) ? row(`${inclusive ? 'Incl. ' : ''}${isDigital(o.payment) ? 'Card' : 'Cash'} tax ${num(o.tax_rate)}%`, num(o.tax)) : ''}
+      ${Number(o.delivery_fee) ? row('Delivery charges', num(o.delivery_fee)) : ''}
+      ${Number(o.round_off) ? row('Round off', (Number(o.round_off) > 0 ? '+' : '−') + num(Math.abs(o.round_off))) : ''}
+      ${row('TOTAL', 'Rs ' + num(o.total), 'grand')}
+      ${o.paid ? row('Paid by', esc(o.payment)) : ''}
+      ${Number(o.cash_received) ? row('Cash received', num(o.cash_received)) + row('Change returned', num(o.change_due)) : ''}
+    </div>
+    ${c && s.receipt_loyalty !== false ? `<div class="loyal"><div>LOYALTY CARD · ${c.stamps || 0} / ${req()}</div>
+      <div class="dots">${Array.from({ length: req() }, (_, i) => `<span class="${i < (c.stamps || 0) ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="sm">${rewardReady(c, req()) ? `Card full! ${loyalPct()}% off on your next visit` : `${req() - (c.stamps || 0)} more visit${req() - (c.stamps || 0) === 1 ? '' : 's'} for ${loyalPct()}% off`}</div></div>` : ''}
+    <div class="c foot">
+      <div class="thanks">${esc(s.receipt_footer || 'Thank you for visiting KAFEO')}</div>
+      <div class="sm">Order on WhatsApp ${esc(CAFE.phone)}</div>
+      <div class="sm">${esc(CAFE.web)} · ${esc(CAFE.insta)}</div>
+    </div>
   </div>`;
 }
-function printHtml(html) { $('#print-area').innerHTML = html; window.print(); }
-const printReceipt = (o) => printHtml(receiptHtml(o));
+
+// Kitchen order ticket — no prices, big text. opts: { station: 'kitchen'|'bar'|null, onlyNew }
+function kotHtml(o, opts = {}) {
+  let items = o.items.filter((l) => !opts.station || l.station === opts.station);
+  if (opts.onlyNew) items = items.filter((l) => l.added > 0).map((l) => ({ ...l, qty: l.added }));
+  if (!items.length) return '';
+  const label = opts.station === 'bar' ? 'BAR / COFFEE' : 'KITCHEN';
+  return `<div class="slip kot">
+    <div class="kot-head"><span>${label}</span><span>#${o.id}</span></div>
+    ${opts.onlyNew ? '<div class="kot-addon">ADD-ON · NEW ITEMS ONLY</div>' : ''}
+    <div class="kot-where">${whereText(o)}${o.type !== 'dine' && o.customer_name ? `<div class="kot-cust">${esc(o.customer_name)}</div>` : ''}</div>
+    <div class="r sm"><span>${fmtTime(new Date())}</span><span>${o.meta?.by ? 'By ' + esc(o.meta.by) : ''}</span></div>
+    <div class="kot-items">${items.map((l) => `<div class="ki"><b>${l.qty}</b><span>${esc(l.name)}${l.note ? `<i>» ${esc(l.note)}</i>` : ''}</span></div>`).join('')}</div>
+    ${o.notes ? `<div class="kot-note">NOTE: ${esc(o.notes)}</div>` : ''}
+    ${o.reward && !opts.onlyNew && opts.station !== 'bar' ? `<div class="kot-note">FREE: ${esc(o.reward)}</div>` : ''}
+    <div class="c sm">${items.reduce((a, l) => a + l.qty, 0)} item(s)</div>
+  </div>`;
+}
+function kotSlips(o, onlyNew) {
+  const split = S.settings.kot_split !== false;
+  const slips = split ? [kotHtml(o, { station: 'kitchen', onlyNew }), kotHtml(o, { station: 'bar', onlyNew })] : [kotHtml(o, { onlyNew })];
+  return slips.filter(Boolean);
+}
+function printHtml(html) { if (!html) return; $('#print-area').innerHTML = html; window.print(); }
+async function customerFor(o) {
+  if (!o.customer_phone || S.settings.receipt_loyalty === false) return null;
+  try { return await api.getCustomer(o.customer_phone); } catch { return null; }
+}
+async function printReceipt(o, opts = {}) { printHtml(receiptHtml(o, { ...opts, customer: await customerFor(o) })); }
+function printKot(o, onlyNew = false) {
+  const slips = kotSlips(o, onlyNew);
+  if (!slips.length) return toast('Nothing new to send to the kitchen');
+  printHtml(slips.join(''));
+}
+// After an order is added / paid: kitchen ticket(s) and, if asked, the receipt — one print job.
+async function printAfterSave(o, { kot, onlyNew, receipt }) {
+  const parts = [];
+  if (kot && S.settings.kot_auto !== false) parts.push(...kotSlips(o, onlyNew));
+  if (receipt) parts.push(receiptHtml(o, { customer: await customerFor(o) }));
+  printHtml(parts.join(''));
+}
 function printZ() {
   const r = summarize(S.today);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
@@ -1323,7 +1401,9 @@ const ACT = {
   saveOrder: () => run(async () => {
     const wasEdit = !!S.editing;
     const row = await saveOrder(null);
-    if (row) toast(wasEdit ? `Order #${row.id} updated — customer pays from Orders` : `Order #${row.id} added — customer pays after food from Orders`, { action: { label: 'Print bill', fn: () => printReceipt(row) } });
+    if (!row) return;
+    toast(wasEdit ? `Order #${row.id} updated — customer pays from Orders` : `Order #${row.id} added — customer pays after food from Orders`, { action: { label: 'Print bill', fn: () => printReceipt(row) } });
+    await printAfterSave(row, { kot: true, onlyNew: wasEdit, receipt: false });
   }),
   payNow: () => openPayment(null),
 
@@ -1377,7 +1457,8 @@ const ACT = {
     if (S.route !== 'order') location.hash = '#order'; else { renderSummary(); renderGrid(); }
     toast(`Editing order #${o.id} — add items, then Update or Pay`);
   },
-  print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printReceipt(o); }),
+  print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) await printReceipt(o, { reprint: o.paid }); }),
+  printKot: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printKot(o, false); }),
   cancelOrder: (d) => {
     if (!confirm(`Cancel order #${d.id}? It stays in reports as cancelled.`)) return;
     run(async () => { await api.updateOrder(Number(d.id), { status: 'cancelled' }); await refreshOrders(); renderBillsBadge(); renderScreen(); toast(`Order #${d.id} cancelled`); });
@@ -1432,6 +1513,21 @@ const ACT = {
     S.riders = await api.listRiders(); toast('Rider saved');
   }),
   removePhoto: (d) => { if (confirm('Remove this photo?')) run(async () => { await setPhoto(d.id, ''); toast('Photo removed'); }); },
+  testPrint: (d) => {
+    const now = new Date().toISOString();
+    const sample = {
+      id: 1234, created_at: now, updated_at: now, type: 'dine', table_no: 'T4', customer_name: 'Sample customer', customer_phone: '03001234567', address: '',
+      items: [
+        { name: 'Kafeo Special (L)', price: 2399, qty: 1, station: 'kitchen', note: 'Extra cheese', added: 0 },
+        { name: 'Loaded Fries', price: 699, qty: 1, station: 'kitchen', note: '', added: 0 },
+        { name: 'Iced Caramel Latte', price: 800, qty: 2, station: 'bar', note: 'Less sugar', added: 0 }
+      ],
+      notes: 'Birthday — candle with dessert', subtotal: 4698, discount: 470, discount_label: 'Friend & family', service_charge: 0,
+      tax: 0, tax_rate: 0, delivery_fee: 0, round_off: 0, total: 4228, payment: 'Cash', paid: true, cash_received: 5000, change_due: 772,
+      reward: 'Free dessert', status: 'done', meta: { by: S.me.profile.name, discount: { scope: 'bill', type: 'pct', value: 10 } }
+    };
+    if (d.v === 'kot') printKot(sample); else printHtml(receiptHtml(sample, { customer: { stamps: 3 } }));
+  },
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
 
@@ -1482,6 +1578,8 @@ const SUBMIT = {
       quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),
       banks: csvList(form.banks.value),
       discount_reasons: form.discount_reasons.value.split('\n').map((l) => l.trim()).filter(Boolean),
+      kot_auto: form.kot_auto.checked, kot_split: form.kot_split.checked, receipt_loyalty: form.receipt_loyalty.checked,
+      receipt_footer: form.receipt_footer.value.trim(),
       loyalty_stamps: Number(form.loyalty_stamps.value) || 5, loyalty_discount_pct: Number(form.loyalty_discount_pct.value) || 50, bmsm
     };
     await api.saveSettings(data); S.settings = data; toast('Settings saved');
