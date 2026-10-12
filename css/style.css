@@ -340,11 +340,10 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
 #print-area { display: none; }
 .kprint { margin-left: 6px; width: 36px; height: 32px; border-radius: 8px; border: 1px solid #4A3D35; background: transparent; color: var(--gold); display: grid; place-items: center; }
 @media print {
-  @page { size: 80mm auto; margin: 0; }
   html, body { background: #fff !important; height: auto; }
   body > *:not(#print-area) { display: none !important; }
   #print-area { display: block !important; }
-  .slip { width: 72mm; margin: 0 auto; padding: 4mm 0 10mm; font-family: Manrope, Arial, sans-serif; font-size: 11px; line-height: 1.35; color: #000; font-variant-numeric: tabular-nums; break-after: page; page-break-after: always; }
+  .slip { width: var(--slip-w, 64mm); margin: 0 0 0 var(--slip-left, 0); padding: 3mm 0 10mm; box-sizing: border-box; overflow: hidden; font-family: Manrope, Arial, sans-serif; font-size: 11px; line-height: 1.35; color: #000; font-variant-numeric: tabular-nums; break-after: page; page-break-after: always; }
   .slip:last-child { break-after: auto; page-break-after: auto; }
   .slip .c { text-align: center; }
   .slip .sm { font-size: 9.5px; }
@@ -355,7 +354,7 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .slip .big { font-size: 15px; font-weight: 800; }
 
   /* ---- customer receipt ---- */
-  .rcpt .logo { width: 46mm; height: auto; display: block; margin: 0 auto; }
+  .rcpt .logo { width: 70%; height: auto; display: block; margin: 0 auto; }
   .rcpt .tagline { font-size: 8px; font-weight: 700; letter-spacing: 3px; margin: 2px 0 5px; }
   .rcpt .addr { font-size: 9.5px; line-height: 1.45; }
   .rcpt .doc { margin: 7px 0 6px; padding: 4px 0; background: #000; color: #fff; text-align: center; font-weight: 800; font-size: 11.5px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -367,7 +366,9 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .rcpt .lines { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 10.5px; }
   .rcpt .lines th { font-size: 8.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; text-align: left; padding: 3px 0; border-bottom: 1px solid #000; }
   .rcpt .lines td { padding: 3px 0; vertical-align: top; border-bottom: 1px dotted #999; }
+  .rcpt .lines { table-layout: auto; }
   .rcpt .lines th:nth-child(1), .rcpt .lines td:nth-child(1) { width: 4mm; }
+  .rcpt .lines td:nth-child(2) { word-break: break-word; }
   .rcpt .lines th:nth-child(n+3), .rcpt .lines td:nth-child(n+3) { text-align: right; white-space: nowrap; padding-left: 4px; }
   .rcpt .lines td:nth-child(2) { font-weight: 600; }
   .rcpt .lines td small { display: block; font-size: 8.5px; font-weight: 500; font-style: italic; }
@@ -384,13 +385,24 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .rcpt .loyal .dots span.on { background: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .rcpt footer { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #000; }
   .rcpt .qr-row { display: flex; align-items: center; gap: 8px; font-size: 9px; line-height: 1.4; }
-  .rcpt .qr { width: 20mm; height: 20mm; flex-shrink: 0; }
+  .rcpt .qr { width: 30%; aspect-ratio: 1; flex-shrink: 0; }
   .rcpt .qr svg { width: 100%; height: 100%; display: block; }
   .rcpt .small-line { font-size: 9px; }
   .rcpt .thanks { text-align: center; font-weight: 800; font-size: 11px; margin: 7px 0 5px; }
-  .rcpt .barcode { width: 52mm; height: 9mm; display: block; margin: 0 auto; }
+  .rcpt .barcode { width: 80%; height: 9mm; display: block; margin: 0 auto; }
   .rcpt .inv { font-size: 9px; letter-spacing: 2px; margin-top: 1px; }
   .rcpt .powered { font-size: 8px; margin-top: 4px; }
+
+  /* ---- 58mm rolls: tighter layout ---- */
+  .paper-58 .slip { font-size: 10px; }
+  .paper-58 .rcpt .info { grid-template-columns: 1fr; }
+  .paper-58 .rcpt .lines th:nth-child(4), .paper-58 .rcpt .lines td:nth-child(4) { display: none; }
+  .paper-58 .rcpt .lines th:nth-child(1), .paper-58 .rcpt .lines td:nth-child(1) { display: none; }
+  .paper-58 .rcpt .payable { font-size: 14px; }
+  .paper-58 .rcpt .qr-row { flex-direction: column; text-align: center; }
+  .paper-58 .rcpt .qr { width: 45%; }
+  .paper-58 .kot .kot-where { font-size: 22px; }
+  .paper-58 .kot .kot-items td { font-size: 13px; }
 
   /* ---- kitchen ticket ---- */
   .kot { font-size: 12px; }
@@ -402,7 +414,7 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .kot .kot-meta { display: flex; justify-content: space-between; font-size: 9.5px; padding: 4px 0; border-bottom: 2px solid #000; }
   .kot .kot-items { width: 100%; border-collapse: collapse; margin: 2px 0 4px; }
   .kot .kot-items td { padding: 6px 0; border-bottom: 1px dashed #000; vertical-align: top; font-size: 15px; font-weight: 800; line-height: 1.25; }
-  .kot .kot-items td.q { width: 10mm; font-size: 18px; }
+  .kot .kot-items td.q { width: 9mm; font-size: 18px; }
   .kot .kot-items td small { display: block; font-size: 12px; font-weight: 700; margin-top: 2px; }
   .kot .kot-items td.tick { width: 7mm; text-align: right; }
   .kot .kot-items td.tick span { display: inline-block; width: 13px; height: 13px; border: 1.5px solid #000; border-radius: 2px; }

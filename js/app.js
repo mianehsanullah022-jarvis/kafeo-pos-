@@ -1197,6 +1197,10 @@ function renderSettings(el) {
       <label class="check"><input type="checkbox" name="kot_auto" ${s.kot_auto !== false ? 'checked' : ''}> Print a kitchen ticket (KOT) automatically when an order is added or paid</label>
       <label class="check"><input type="checkbox" name="kot_split" ${s.kot_split !== false ? 'checked' : ''}> Separate tickets for Kitchen and Bar / Coffee</label>
       <label class="check"><input type="checkbox" name="receipt_loyalty" ${s.receipt_loyalty !== false ? 'checked' : ''}> Show the customer's loyalty stamps on the receipt</label>
+      <div class="cols">
+        <label class="field">Receipt paper<select name="paper">${Object.entries(PAPER).map(([k, v]) => `<option value="${k}" ${(s.paper || '80safe') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+        <label class="field">Move print left/right (mm, if it’s still cut off)<input name="print_offset_mm" type="number" min="0" max="10" step="1" value="${esc(s.print_offset_mm || 0)}"></label>
+      </div>
       <label class="field">Message at the bottom of the receipt<input name="receipt_footer" value="${esc(s.receipt_footer)}" maxlength="120"></label>
       <div class="row wrap"><button type="button" class="btn" data-act="testPrint" data-v="receipt">${icon('print', 18)} Test receipt</button>
         <button type="button" class="btn" data-act="testPrint" data-v="kot">${icon('print', 18)} Test kitchen ticket</button></div>
@@ -1442,7 +1446,20 @@ function kotSlips(o, onlyNew) {
   const slips = split ? [kotHtml(o, { station: 'kitchen', onlyNew }), kotHtml(o, { station: 'bar', onlyNew })] : [kotHtml(o, { onlyNew })];
   return slips.filter(Boolean);
 }
-function printHtml(html) { if (!html) return; $('#print-area').innerHTML = html; window.print(); }
+// Paper sizes: printable width is a little less than the roll so nothing is cut off on the right.
+const PAPER = {
+  '80safe': { roll: 80, width: 64, label: '80mm roll — narrow (recommended)' },
+  '80full': { roll: 80, width: 72, label: '80mm roll — full width' },
+  '58': { roll: 58, width: 46, label: '58mm roll' }
+};
+function printHtml(html) {
+  if (!html) return;
+  const p = PAPER[S.settings.paper] || PAPER['80safe'];
+  const left = Math.max(0, Number(S.settings.print_offset_mm) || 0);
+  $('#print-area').innerHTML = `<style>@page { size: ${p.roll}mm auto; margin: 0; } #print-area { --slip-w: ${p.width}mm; --slip-left: ${left}mm; }</style>
+    <div class="paper-${p.roll}">${html}</div>`;
+  window.print();
+}
 async function customerFor(o) {
   if (!o.customer_phone || S.settings.receipt_loyalty === false) return null;
   try { return await api.getCustomer(o.customer_phone); } catch { return null; }
@@ -1703,6 +1720,7 @@ const SUBMIT = {
       discount_reasons: form.discount_reasons.value.split('\n').map((l) => l.trim()).filter(Boolean),
       kot_auto: form.kot_auto.checked, kot_split: form.kot_split.checked, receipt_loyalty: form.receipt_loyalty.checked,
       receipt_footer: form.receipt_footer.value.trim(),
+      paper: form.paper.value, print_offset_mm: Math.max(0, Math.min(10, Number(form.print_offset_mm.value) || 0)),
       loyalty_stamps: Number(form.loyalty_stamps.value) || 5, loyalty_discount_pct: Number(form.loyalty_discount_pct.value) || 50, bmsm
     };
     await api.saveSettings(data); S.settings = data; toast('Settings saved');

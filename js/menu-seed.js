@@ -152,6 +152,8 @@ export const DEFAULT_SETTINGS = {
   kot_split: true,               // separate slips for kitchen and bar
   receipt_footer: 'Thank you for visiting KAFEO — see you again!',
   receipt_loyalty: true,         // show the customer's stamps on the receipt
+  paper: '80safe',               // '80safe' (64mm print), '80full' (72mm), '58' (46mm)
+  print_offset_mm: 0,
   loyalty_stamps: 5,
   loyalty_discount_pct: 50,
   tables: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'H1', 'H2'],
