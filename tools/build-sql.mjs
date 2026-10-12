@@ -29,5 +29,7 @@ ${items};
 end $$;
 `;
 
-writeFileSync(new URL('../supabase/schema.sql', import.meta.url), base + seed);
+const extras = ['002_billing.sql', '003_menu_photos.sql', '004_inventory.sql']
+  .map((f) => `\n-- ===== ${f} =====\n` + readFileSync(new URL('../supabase/migrations/' + f, import.meta.url), 'utf8')).join('');
+writeFileSync(new URL('../supabase/schema.sql', import.meta.url), base + seed + extras);
 console.log(`schema.sql written: ${CATEGORIES.length} categories, ${ITEMS.length} items`);

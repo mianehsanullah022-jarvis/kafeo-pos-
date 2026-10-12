@@ -68,6 +68,18 @@ export function createSupabaseApi(url, key) {
     },
     async getOrder(id) { return must(await sb.from('orders').select('*').eq('id', id).maybeSingle()); },
 
+    // ---- inventory ----
+    async listStock() { return must(await sb.from('stock_items').select('*').order('category').order('name')); },
+    async saveStockItem(it) { return must(await sb.from('stock_items').upsert(it).select().single()); },
+    async addStockItems(rows) { return must(await sb.from('stock_items').insert(rows).select()); },
+    async listRecipes() { return must(await sb.from('recipes').select('*')); },
+    async saveRecipe(menuItemId, optionKey, rows) {
+      must(await sb.from('recipes').delete().eq('menu_item_id', menuItemId).eq('option_key', optionKey));
+      if (rows.length) must(await sb.from('recipes').insert(rows.map((r) => ({ menu_item_id: menuItemId, option_key: optionKey, stock_item_id: r.stock_item_id, qty: r.qty }))));
+    },
+    async addMoves(moves) { if (moves.length) must(await sb.from('stock_moves').insert(moves)); },
+    async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
+
     async getCustomer(phone) { return must(await sb.from('customers').select('*').eq('phone', phone).maybeSingle()); },
     async saveCustomer(c) { return must(await sb.from('customers').upsert(c).select().single()); },
     async listCustomers(search) {
@@ -85,6 +97,7 @@ export function createSupabaseApi(url, key) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (p) => cb('orders', p.new || p.old))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => cb('menu'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => cb('settings'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, () => cb('stock'))
         .subscribe((status) => cb('status', status));
       return () => sb.removeChannel(ch);
     }

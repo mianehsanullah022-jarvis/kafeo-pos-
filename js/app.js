@@ -1,16 +1,16 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-0100';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-0100';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0100';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-0109';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-0109';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0109';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-0100';
+} from './logic.js?v=2026.10.13-0109';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-0100')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-0109')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -40,6 +40,7 @@ const ICON = {
   edit: 'M4 20h4L19 9l-4-4L4 16v4z M13 7l4 4',
   print: 'M7 9V3h10v6 M7 17H4v-7h16v7h-3 M7 14h10v7H7z',
   check: 'M5 12l5 5 9-10',
+  box: 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'
 };
 const icon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k]}"></path></svg>`;
@@ -84,6 +85,7 @@ const ROUTES = [
   { id: 'kitchen', label: 'Kitchen', roles: ['owner', 'cashier', 'kitchen'] },
   { id: 'delivery', label: 'Delivery', roles: ['owner', 'cashier', 'rider'] },
   { id: 'customers', label: 'Loyalty', roles: ['owner', 'cashier'] },
+  { id: 'inventory', label: 'Stock', roles: ['owner', 'cashier', 'kitchen'], icon: 'box' },
   { id: 'reports', label: 'Reports', roles: ['owner'] },
   { id: 'menu', label: 'Menu', roles: ['owner'] },
   { id: 'settings', label: 'Settings', roles: ['owner'] }
@@ -101,6 +103,7 @@ const S = {
   station: 'all',
   rep: { range: 'today', orders: [], loaded: false },
   cs: { q: '', list: [], sel: null, orders: [] },
+  inv: { ready: null, stock: [], recipes: [], moves: [], tab: 'stock', q: '', filter: 'all', rCat: null, rItem: null, draft: {}, histKind: 'all', movesLoaded: false },
   mcat: null
 };
 const role = () => S.me?.profile?.role;
@@ -181,6 +184,7 @@ async function loadAll() {
   S.settings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
   S.riders = riders;
   await refreshOrders();
+  await loadInventory();
 }
 
 async function refreshOrders() {
@@ -205,6 +209,7 @@ function onLive(kind, payload) {
     S.riders = await api.listRiders();
     if (S.route === 'order') renderSummary(); else rerenderIf(['delivery', 'settings']);
   });
+  if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); });
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
 function scheduleRefresh() {
@@ -253,7 +258,7 @@ window.addEventListener('hashchange', () => {
 
 function renderShell() {
   const links = ROUTES.filter((r) => canSee(r.id)).map((r) =>
-    `<a href="#${r.id}" class="${S.route === r.id ? 'on' : ''}" ${S.route === r.id ? 'aria-current="page"' : ''}>${icon(r.icon || r.id)}${r.label}${r.id === 'orders' ? '<b class="rail-badge" id="rail-orders"></b>' : ''}</a>`).join('');
+    `<a href="#${r.id}" class="${S.route === r.id ? 'on' : ''}" ${S.route === r.id ? 'aria-current="page"' : ''}>${icon(r.icon || r.id)}${r.label}${r.id === 'orders' ? '<b class="rail-badge" id="rail-orders"></b>' : r.id === 'inventory' ? '<b class="rail-badge hidden" id="rail-inventory"></b>' : ''}</a>`).join('');
   $('#app').innerHTML = `
   <div class="shell">
     <nav class="rail" aria-label="POS sections">
@@ -277,6 +282,7 @@ function renderShell() {
   renderLiveDot();
   renderScreen();
   renderBillsBadge();
+  renderInvBadge();
 }
 function renderLiveDot() {
   const el = $('#live-dot');
@@ -287,7 +293,7 @@ function renderLiveDot() {
 function renderScreen() {
   const el = $('#screen');
   if (!el) return;
-  const map = { order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
+  const map = { inventory: renderInventory, order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
   (map[S.route] || renderOrder)(el);
 }
 
@@ -453,7 +459,7 @@ function addToCart(itemId, optIdx) {
   const name = i.name + (o.k ? ` (${o.k})` : '');
   const line = S.cart.find((l) => l.id === i.id && l.name === name && !l.note && !l.disc);
   if (line) line.qty++;
-  else S.cart.push({ id: i.id, name, price: Number(o.p), qty: 1, station: i.station, counts: i.counts || null, note: '' });
+  else S.cart.push({ id: i.id, opt: o.k || '', name, price: Number(o.p), qty: 1, station: i.station, counts: i.counts || null, note: '' });
   renderSummary(); renderGrid();
   const lines = $('#lines'); if (lines) lines.scrollTop = lines.scrollHeight;
 }
@@ -477,7 +483,7 @@ function orderFromState(method, paid, payExtra = {}) {
   const prev = S.editing;
   const items = S.cart.map((l) => {
     const added = prev ? (l.sentQty ? Math.max(0, l.qty - l.sentQty) : l.qty) : 0;
-    return { id: l.id, name: l.name, price: l.price, qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, added };
+    return { id: l.id, opt: optOf(l), name: l.name, price: l.price, qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, added };
   });
   const anyAdded = items.some((i) => i.added > 0) || (prev && items.some((i) => !prev.items.find((x) => x.name === i.name)));
   return {
@@ -503,8 +509,10 @@ async function saveOrder(method = null, payExtra = {}) {
   S.busy = true; renderSummary();
   const row = await run(async () => {
     let r;
+    const prevItems = S.editing ? S.editing.items : [];
     if (S.editing) r = await api.updateOrder(S.editing.id, data);
     else r = await api.createOrder({ ...data, created_by: LIVE ? S.me.user.id : null });
+    syncStock(r, prevItems, r.items);   // runs in the background; never blocks the order
     if (r.customer_phone) await saveCustomerAfter(r, paid);
     resetOrder();
     await refreshOrders();
@@ -523,7 +531,7 @@ function loadForEdit(o) {
     editing: o, type: o.type, table: o.table_no, phone: o.customer_phone, custName: o.customer_name, address: o.address, notes: o.notes,
     discount: ctxForOrder(o, 'Cash').discount, serviceOn: o.meta?.serviceOn ?? Number(o.service_charge) > 0,
     feeOverride: o.type === 'deliv' ? Number(o.delivery_fee) : null, customer: null,
-    cart: o.items.map((l) => ({ id: l.id, name: l.name, price: Number(l.price), qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, sentQty: l.qty }))
+    cart: o.items.map((l) => ({ id: l.id, opt: optOf(l), name: l.name, price: Number(l.price), qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, sentQty: l.qty }))
   });
   if (phoneOk(o.customer_phone)) api.getCustomer(o.customer_phone).then((c) => { S.customer = c; renderSummary(); }).catch(() => {});
 }
@@ -864,6 +872,250 @@ function renderOrders(el) {
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
         <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty panel">Nothing paid yet today.</div>')}`;
+}
+
+// =====================================================================
+// INVENTORY — stock, recipes & food cost, history
+// =====================================================================
+const UNITS = ['g', 'kg', 'ml', 'L', 'pcs', 'pack', 'dozen', 'bottle', 'can'];
+const MOVE_LABEL = { purchase: 'Stock in', sale: 'Used in order', return: 'Returned (order changed)', waste: 'Waste', adjust: 'Count correction', opening: 'Opening stock' };
+const WASTE_REASONS = ['Expired', 'Spoiled', 'Spilled / dropped', 'Burnt / remade', 'Staff meal', 'Sample / tasting'];
+const STARTER_STOCK = [
+  ['Pizza dough — small', 'Bakery', 'pcs'], ['Pizza dough — medium', 'Bakery', 'pcs'], ['Pizza dough — large', 'Bakery', 'pcs'], ['Burger buns', 'Bakery', 'pcs'], ['Sandwich bread', 'Bakery', 'pcs'], ['Tortilla wraps', 'Bakery', 'pcs'],
+  ['Mozzarella cheese', 'Dairy', 'g'], ['Cheese slices', 'Dairy', 'pcs'], ['Milk', 'Dairy', 'ml'], ['Cream', 'Dairy', 'ml'], ['Ice cream', 'Dairy', 'ml'],
+  ['Chicken tikka (marinated)', 'Meat', 'g'], ['Chicken fajita (marinated)', 'Meat', 'g'], ['Chicken breast', 'Meat', 'g'], ['Zinger fillets', 'Meat', 'pcs'], ['Beef patties', 'Meat', 'pcs'], ['Beef steak', 'Meat', 'g'], ['Sausages', 'Meat', 'g'], ['Chicken wings', 'Meat', 'pcs'], ['Nuggets', 'Meat', 'pcs'],
+  ['Fries (frozen)', 'Frozen', 'g'], ['Onion rings', 'Frozen', 'pcs'], ['Pasta', 'Dry goods', 'g'],
+  ['Pizza sauce', 'Sauces', 'g'], ['Mayonnaise', 'Sauces', 'g'], ['Mushrooms', 'Produce', 'g'], ['Olives', 'Produce', 'g'], ['Jalapenos', 'Produce', 'g'], ['Onions', 'Produce', 'g'], ['Lemons', 'Produce', 'pcs'], ['Mint', 'Produce', 'g'],
+  ['Coffee beans', 'Coffee & tea', 'g'], ['Tea leaves', 'Coffee & tea', 'g'], ['Sugar', 'Coffee & tea', 'g'], ['Caramel syrup', 'Syrups', 'ml'], ['Chocolate syrup', 'Syrups', 'ml'], ['Strawberry syrup', 'Syrups', 'ml'], ['Mango syrup', 'Syrups', 'ml'],
+  ['Coke 345ml', 'Soft drinks', 'can'], ['Coke 1.5L', 'Soft drinks', 'bottle'], ['Sprite 345ml', 'Soft drinks', 'can'], ['Water 500ml', 'Soft drinks', 'bottle'],
+  ['Takeaway pizza boxes', 'Packaging', 'pcs'], ['Takeaway cups', 'Packaging', 'pcs'], ['Delivery bags', 'Packaging', 'pcs']
+];
+
+const invQty = (n) => { const v = Number(n) || 0; return Math.abs(v) >= 100 || Number.isInteger(v) ? num(v) : v.toFixed(2).replace(/\.?0+$/, ''); };
+const stockById = (id) => S.inv.stock.find((x) => x.id === id);
+const stockState = (it) => (Number(it.qty) <= 0 ? 'out' : Number(it.low_level) > 0 && Number(it.qty) <= Number(it.low_level) ? 'low' : 'ok');
+// Items that need buying: only those with an alert level set (untouched starter items don't nag).
+const lowStock = () => S.inv.stock.filter((it) => it.active !== false && Number(it.low_level) > 0 && stockState(it) !== 'ok');
+const optOf = (l) => l.opt ?? (l.name.match(/\(([^)]+)\)$/)?.[1] || '');
+const recipeFor = (menuId, opt) => {
+  let r = S.inv.recipes.filter((x) => x.menu_item_id === menuId && x.option_key === (opt || ''));
+  if (!r.length && opt) r = S.inv.recipes.filter((x) => x.menu_item_id === menuId && x.option_key === '');
+  return r;
+};
+function foodCost(menuId, opt) {
+  return recipeFor(menuId, opt).reduce((a, r) => a + Number(r.qty) * Number(stockById(r.stock_item_id)?.cost || 0), 0);
+}
+
+async function loadInventory() {
+  try {
+    const [stock, recipes] = await Promise.all([api.listStock(), api.listRecipes()]);
+    S.inv.stock = stock; S.inv.recipes = recipes; S.inv.ready = true;
+  } catch (e) {
+    S.inv.ready = false;   // inventory tables not set up yet — orders keep working
+    console.warn('Inventory not available:', e.message);
+  }
+  renderInvBadge();
+}
+function renderInvBadge() {
+  const el = $('#rail-inventory'); if (!el) return;
+  const n = S.inv.ready ? lowStock().length : 0;
+  el.textContent = n || ''; el.classList.toggle('hidden', !n);
+}
+
+// Keep stock in step with orders: compare old and new item quantities, deduct the difference.
+async function syncStock(order, prevItems, newItems) {
+  if (!S.inv.ready || !S.inv.recipes.length) return;
+  const key = (l) => l.id + '|' + optOf(l) + '|' + l.name;
+  const delta = new Map();
+  prevItems.forEach((l) => delta.set(key(l), { l, d: -(l.qty || 0) }));
+  newItems.forEach((l) => { const k = key(l); const e = delta.get(k) || { l, d: 0 }; e.d += l.qty || 0; e.l = l; delta.set(k, e); });
+  const per = new Map();
+  for (const { l, d } of delta.values()) {
+    if (!d) continue;
+    for (const r of recipeFor(l.id, optOf(l))) per.set(r.stock_item_id, (per.get(r.stock_item_id) || 0) + Number(r.qty) * d);
+  }
+  const moves = [...per].filter(([, q]) => q).map(([sid, q]) => ({
+    stock_item_id: sid, change: -q, kind: q > 0 ? 'sale' : 'return', order_id: order.id,
+    note: `Order #${order.id}${q < 0 ? ' changed / cancelled' : ''}`, by_name: S.me.profile.name
+  }));
+  try { await api.addMoves(moves); await loadInventory(); } catch (e) { console.warn('Stock not updated:', e.message); }
+}
+
+function renderInventory(el) {
+  el.className = 'screen';
+  if (S.inv.ready === null) { el.innerHTML = '<div class="empty">Loading stock…</div>'; run(async () => { await loadInventory(); renderScreen(); }); return; }
+  if (S.inv.ready === false) {
+    el.innerHTML = `<div class="screen-head"><h1>Inventory</h1></div>
+      <div class="panel stack"><h2>One-time setup needed</h2>
+      <div>Inventory needs a small database update. In Supabase open <b>SQL Editor</b>, paste the file <b>supabase/migrations/004_inventory.sql</b> from your GitHub repo and press <b>Run</b>, then refresh this page.</div>
+      <div><button type="button" class="btn" data-act="invRetry">I’ve done it — check again</button></div></div>`;
+    return;
+  }
+  const tab = S.inv.tab;
+  el.innerHTML = `
+    <div class="screen-head"><div><h1>Inventory</h1><div class="muted">Stock goes down automatically when orders are added, using each item’s recipe.</div></div>
+      <span class="grow"></span>
+      <div class="seg" role="tablist" style="min-width:420px">
+        ${[['stock', 'Stock'], ['recipes', 'Recipes & food cost'], ['history', 'History']].map(([v, l]) => `<button type="button" class="${tab === v ? 'on' : ''}" data-act="invTab" data-v="${v}">${l}</button>`).join('')}
+      </div></div>
+    <div id="inv-body"></div>`;
+  ({ stock: renderStockTab, recipes: renderRecipeTab, history: renderHistoryTab })[tab]($('#inv-body'));
+}
+
+function renderStockTab(el) {
+  const all = S.inv.stock.filter((it) => it.active !== false);
+  const q = S.inv.q.trim().toLowerCase();
+  const f = S.inv.filter;
+  const list = all.filter((it) => (!q || it.name.toLowerCase().includes(q) || (it.category || '').toLowerCase().includes(q) || (it.supplier || '').toLowerCase().includes(q))
+    && (f === 'all' || stockState(it) === f || (f === 'low' && stockState(it) === 'out')));
+  const value = all.reduce((a, it) => a + Math.max(0, Number(it.qty)) * Number(it.cost || 0), 0);
+  const low = all.filter((it) => stockState(it) === 'low').length, out = all.filter((it) => stockState(it) === 'out').length;
+  const cats = [...new Set(list.map((it) => it.category || 'General'))];
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="l">Stock items</div><div class="v">${all.length}</div></div>
+      <div class="kpi"><div class="l">Need to buy</div><div class="v" style="color:${lowStock().length ? 'var(--warn)' : 'inherit'}">${lowStock().length}</div><div class="s">items at or below alert level</div></div>
+      <div class="kpi"><div class="l">Running low</div><div class="v" style="color:${low ? 'var(--accent)' : 'inherit'}">${low}</div></div>
+      <div class="kpi"><div class="l">Out of stock</div><div class="v" style="color:${out ? 'var(--warn)' : 'inherit'}">${out}</div></div>
+      <div class="kpi"><div class="l">Stock value (at cost)</div><div class="v">${fmt(value)}</div></div>
+    </div>
+    <div class="row wrap" style="margin:14px 0">
+      <label class="search" style="max-width:360px">${icon('search', 18)}<span class="sr">Search stock</span><input data-bind="invq" type="search" placeholder="Search item, category, supplier" value="${esc(S.inv.q)}" autocomplete="off"></label>
+      ${[['all', 'All'], ['low', 'Low & out'], ['out', 'Out']].map(([v, l]) => `<button type="button" class="pill ${f === v ? 'on' : ''}" data-act="invFilter" data-v="${v}">${l}</button>`).join('')}
+      <span class="grow"></span>
+      ${isOwner() && !S.inv.stock.length ? '<button type="button" class="btn" data-act="invStarter">Add starter list</button>' : ''}
+      ${isOwner() ? '<button type="button" class="btn btn-primary" data-act="invEdit" data-id="">+ Add stock item</button>' : ''}
+    </div>
+    ${list.length ? cats.map((cat) => `
+      <h3 class="inv-cat">${esc(cat)}</h3>
+      <div class="tbl-wrap"><table class="tbl inv">
+        <thead><tr><th>Item</th><th class="num">In stock</th><th class="num">Alert at</th><th class="num">Cost / unit</th><th class="num">Value</th><th>Status</th><th></th></tr></thead>
+        <tbody>${list.filter((it) => (it.category || 'General') === cat).map((it) => {
+          const st = stockState(it);
+          return `<tr class="st-${st}">
+            <td><b>${esc(it.name)}</b>${it.supplier ? `<div class="muted small">${esc(it.supplier)}</div>` : ''}</td>
+            <td class="num"><b class="qty-${st}">${invQty(it.qty)}</b> ${esc(it.unit)}</td>
+            <td class="num muted">${Number(it.low_level) ? invQty(it.low_level) + ' ' + esc(it.unit) : '—'}</td>
+            <td class="num">${Number(it.cost) ? 'Rs ' + (Number(it.cost) < 10 ? Number(it.cost).toFixed(2) : num(it.cost)) : '—'}</td>
+            <td class="num">${fmt(Math.max(0, Number(it.qty)) * Number(it.cost || 0))}</td>
+            <td>${st === 'out' ? '<span class="tag warn">Out of stock</span>' : st === 'low' ? '<span class="tag">Running low</span>' : '<span class="tag ok">OK</span>'}</td>
+            <td class="num"><div class="row" style="justify-content:flex-end">
+              <button type="button" class="btn btn-sm btn-primary" data-act="invMove" data-id="${it.id}" data-k="purchase">+ Stock in</button>
+              <button type="button" class="btn btn-sm" data-act="invMove" data-id="${it.id}" data-k="waste">Waste</button>
+              <button type="button" class="btn btn-sm" data-act="invMove" data-id="${it.id}" data-k="adjust">Count</button>
+              ${isOwner() ? `<button type="button" class="icon-btn" style="width:36px;height:36px" data-act="invEdit" data-id="${it.id}" aria-label="Edit ${esc(it.name)}">${icon('edit', 16)}</button>` : ''}
+            </div></td></tr>`;
+        }).join('')}</tbody></table></div>`).join('')
+      : `<div class="empty panel">${S.inv.stock.length ? 'No stock items match.' : 'No stock items yet. Add your ingredients and packaging — or tap <b>Add starter list</b> for common café items (all at zero, edit to suit).'}</div>`}`;
+}
+
+function renderRecipeTab(el) {
+  const cats = S.menu.categories;
+  S.inv.rCat = S.inv.rCat || cats[0]?.id;
+  const items = S.menu.items.filter((i) => i.category_id === S.inv.rCat);
+  if (!S.inv.rItem || !S.menu.items.find((i) => i.id === S.inv.rItem && i.category_id === S.inv.rCat)) S.inv.rItem = items[0]?.id || null;
+  const item = S.menu.items.find((i) => i.id === S.inv.rItem);
+  const hasRecipe = (i) => S.inv.recipes.some((r) => r.menu_item_id === i.id);
+  const draft = S.inv.draft || {};
+  el.innerHTML = `
+    <div class="row wrap" style="margin:14px 0">${cats.map((c) => `<button type="button" class="pill ${S.inv.rCat === c.id ? 'on' : ''}" data-act="rCat" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>
+    <div class="recipe-wrap">
+      <nav class="recipe-items" aria-label="Menu items">${items.map((i) => `<button type="button" class="${i.id === S.inv.rItem ? 'on' : ''}" data-act="rItem" data-id="${esc(i.id)}">
+        <span>${esc(i.name)}</span>${hasRecipe(i) ? '<span class="tag ok">Recipe</span>' : '<span class="tag">No recipe</span>'}</button>`).join('')}</nav>
+      <section class="stack" style="flex:1;min-width:0">
+        ${!S.inv.stock.length ? '<div class="panel muted">Add stock items first (Stock tab), then set what each menu item uses.</div>' : ''}
+        ${item ? item.options.map((o) => {
+          const k = o.k || '';
+          const rows = draft[item.id + '|' + k] || recipeFor(item.id, k).filter((r) => r.option_key === k).map((r) => ({ stock_item_id: r.stock_item_id, qty: r.qty }));
+          const cost = rows.reduce((a, r) => a + Number(r.qty || 0) * Number(stockById(Number(r.stock_item_id))?.cost || 0), 0);
+          const margin = o.p ? ((o.p - cost) / o.p) * 100 : 0;
+          return `<div class="panel recipe">
+            <div class="row"><h2 style="margin:0">${esc(item.name)}${k ? ' · ' + esc(k) : ''}</h2><span class="grow"></span><span class="muted">Price ${fmt(o.p)}</span></div>
+            <table class="tbl compact"><thead><tr><th>Ingredient</th><th style="width:170px">Amount used</th><th class="num">Cost</th><th></th></tr></thead><tbody>
+              ${rows.map((r, idx) => { const st = stockById(Number(r.stock_item_id)); return `<tr>
+                <td>${isOwner() ? `<select class="input" data-rf="sid" data-key="${esc(item.id + '|' + k)}" data-i="${idx}" aria-label="Ingredient">
+                  <option value="">Choose…</option>${S.inv.stock.filter((s) => s.active !== false).map((s) => `<option value="${s.id}" ${Number(r.stock_item_id) === s.id ? 'selected' : ''}>${esc(s.name)} (${esc(s.unit)})</option>`).join('')}</select>` : esc(st?.name || '?')}</td>
+                <td>${isOwner() ? `<div class="row"><input class="input" style="width:100px" type="number" min="0" step="any" data-rf="qty" data-key="${esc(item.id + '|' + k)}" data-i="${idx}" value="${esc(r.qty)}" aria-label="Amount"><span class="muted">${esc(st?.unit || '')}</span></div>` : `${invQty(r.qty)} ${esc(st?.unit || '')}`}</td>
+                <td class="num">${st && Number(st.cost) ? fmt(Number(r.qty || 0) * Number(st.cost)) : '—'}</td>
+                <td class="num">${isOwner() ? `<button type="button" class="icon-btn" style="width:36px;height:36px" data-act="rDel" data-key="${esc(item.id + '|' + k)}" data-i="${idx}" aria-label="Remove ingredient">${icon('x', 16)}</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="4" class="muted">No ingredients yet.</td></tr>'}
+            </tbody></table>
+            <div class="row wrap">
+              ${isOwner() ? `<button type="button" class="btn btn-sm" data-act="rAdd" data-key="${esc(item.id + '|' + k)}">+ Add ingredient</button>` : ''}
+              <span class="grow"></span>
+              <span>Food cost <b>${fmt(cost)}</b></span>
+              <span class="tag ${margin >= 60 ? 'ok' : margin >= 40 ? '' : 'warn'}">${cost ? `Margin ${margin.toFixed(0)}% · cost ${(100 - margin).toFixed(0)}%` : 'Cost not set'}</span>
+              ${isOwner() ? `<button type="button" class="btn btn-sm btn-primary" data-act="rSave" data-key="${esc(item.id + '|' + k)}">Save recipe</button>` : ''}
+            </div></div>`;
+        }).join('') : '<div class="empty">No items in this category.</div>'}
+        <div class="muted small">Food cost uses each ingredient’s latest cost price (updated when you record a purchase). Margin = price minus food cost.</div>
+      </section>
+    </div>`;
+}
+
+function renderHistoryTab(el) {
+  if (!S.inv.movesLoaded) { el.innerHTML = '<div class="empty">Loading…</div>'; run(async () => { S.inv.moves = await api.listMoves(400); S.inv.movesLoaded = true; renderScreen(); }); return; }
+  const k = S.inv.histKind;
+  const list = S.inv.moves.filter((m) => k === 'all' || m.kind === k);
+  el.innerHTML = `
+    <div class="row wrap" style="margin:14px 0">${[['all', 'All'], ['purchase', 'Stock in'], ['sale', 'Used in orders'], ['waste', 'Waste'], ['adjust', 'Counts'], ['return', 'Returns']].map(([v, l]) =>
+      `<button type="button" class="pill ${k === v ? 'on' : ''}" data-act="histKind" data-v="${v}">${l}</button>`).join('')}
+      <span class="grow"></span><button type="button" class="btn" data-act="histReload">Refresh</button></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Item</th><th class="num">Change</th><th>Type</th><th>Note</th><th>By</th></tr></thead><tbody>
+      ${list.map((m) => { const it = stockById(m.stock_item_id); const ch = Number(m.change); return `<tr>
+        <td>${new Date(m.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${esc(it?.name || 'Deleted item')}</td>
+        <td class="num"><b class="${ch < 0 ? 'err-text' : 'ok-text'}">${ch > 0 ? '+' : '−'}${invQty(Math.abs(ch))}</b> ${esc(it?.unit || '')}</td>
+        <td><span class="tag ${m.kind === 'purchase' ? 'ok' : m.kind === 'waste' ? 'warn' : ''}">${MOVE_LABEL[m.kind] || m.kind}</span></td>
+        <td class="small">${[esc(m.note), Number(m.unit_cost) ? `Rs ${esc(m.unit_cost)}/unit` : ''].filter(Boolean).join(' · ')}</td><td class="small">${esc(m.by_name)}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty">No stock movements yet.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+// ----- pop-ups: stock in / waste / count, and add/edit item -----
+function openStockMove(id, kind) {
+  const it = stockById(id); if (!it) return;
+  S.m = { kind: 'stockMove', id, move: kind, qty: '', cost: kind === 'purchase' ? (it.cost || '') : '', note: '', reason: '' };
+  renderStockMove();
+}
+function renderStockMove() {
+  const m = S.m, it = stockById(m.id);
+  const titles = { purchase: 'Stock in (purchase)', waste: 'Record waste', adjust: 'Stock count' };
+  const after = m.move === 'adjust' ? Number(m.qty || 0) : Number(it.qty) + (m.move === 'waste' ? -1 : 1) * Number(m.qty || 0);
+  openModal('sm', `
+    ${modalHead(titles[m.move], `${esc(it.name)} · now ${invQty(it.qty)} ${esc(it.unit)}`)}
+    <div class="mb stack">
+      <label class="field">${m.move === 'adjust' ? `Counted on the shelf (${esc(it.unit)})` : `Quantity (${esc(it.unit)})`}<input data-m="qty" type="number" min="0" step="any" inputmode="decimal" value="${esc(m.qty)}" autofocus></label>
+      ${m.move === 'purchase' ? `<label class="field">Cost per ${esc(it.unit)} (Rs)<input data-m="cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(m.cost)}"></label>
+        <label class="field">Supplier / bill no. (optional)<input data-m="note" value="${esc(m.note)}" placeholder="${esc(it.supplier || 'e.g. Metro, bill 4521')}"></label>` : ''}
+      ${m.move === 'waste' ? `<div class="chips">${WASTE_REASONS.map((r) => `<button type="button" class="chip-sm ${m.reason === r ? 'on' : ''}" data-act="wasteReason" data-v="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+        <label class="field">Note (optional)<input data-m="note" value="${esc(m.note)}"></label>` : ''}
+      ${m.move === 'adjust' ? `<label class="field">Note (optional)<input data-m="note" value="${esc(m.note)}" placeholder="e.g. weekly count"></label>` : ''}
+      <div class="change" style="background:var(--soft);color:var(--ink)" id="mv-after"><span>Stock after</span><b>${invQty(after)} ${esc(it.unit)}</b></div>
+    </div>
+    <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
+      <button type="button" class="btn btn-primary btn-lg" data-act="invMoveSave">Save</button></footer>`);
+}
+function openStockEdit(id) {
+  const it = id ? stockById(Number(id)) : { name: '', category: 'General', unit: 'g', low_level: 0, cost: 0, supplier: '', active: true };
+  S.m = { kind: 'stockEdit', id: id ? Number(id) : null };
+  const cats = [...new Set(S.inv.stock.map((s) => s.category).concat(['Bakery', 'Dairy', 'Meat', 'Produce', 'Sauces', 'Coffee & tea', 'Syrups', 'Soft drinks', 'Packaging']))];
+  openModal('md', `
+    ${modalHead(id ? 'Edit stock item' : 'Add stock item')}
+    <form class="mb stack" data-submit="stockEdit" id="stock-form">
+      <label class="field">Name<input name="name" required value="${esc(it.name)}" placeholder="e.g. Mozzarella cheese"></label>
+      <div class="cols">
+        <label class="field">Category<input name="category" list="cat-list" value="${esc(it.category)}"><datalist id="cat-list">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        <label class="field">Unit<select name="unit">${UNITS.map((u) => `<option ${it.unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+      </div>
+      <div class="cols">
+        <label class="field">Warn me when stock is at or below<input name="low_level" type="number" min="0" step="any" value="${esc(it.low_level)}"></label>
+        <label class="field">Cost price per unit (Rs)<input name="cost" type="number" min="0" step="any" value="${esc(it.cost)}"></label>
+      </div>
+      ${id ? '' : '<label class="field">Opening stock (how much you have now)<input name="opening" type="number" min="0" step="any" value="0"></label>'}
+      <label class="field">Usual supplier (optional)<input name="supplier" value="${esc(it.supplier)}"></label>
+      ${id ? `<label class="check"><input type="checkbox" name="active" ${it.active !== false ? 'checked' : ''}> In use (untick to hide)</label>` : ''}
+    </form>
+    <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
+      <button type="submit" form="stock-form" class="btn btn-primary btn-lg">${id ? 'Save' : 'Add item'}</button></footer>`);
 }
 
 // =====================================================================
@@ -1608,7 +1860,11 @@ const ACT = {
   printKot: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printKot(o, false); }),
   cancelOrder: (d) => {
     if (!confirm(`Cancel order #${d.id}? It stays in reports as cancelled.`)) return;
-    run(async () => { await api.updateOrder(Number(d.id), { status: 'cancelled' }); await refreshOrders(); renderBillsBadge(); renderScreen(); toast(`Order #${d.id} cancelled`); });
+    run(async () => {
+      const o = findOrder(Number(d.id));
+      await api.updateOrder(Number(d.id), { status: 'cancelled' });
+      if (o && o.status !== 'cancelled') syncStock(o, o.items, []);
+      await refreshOrders(); renderBillsBadge(); renderScreen(); toast(`Order #${d.id} cancelled`); });
   },
 
   // kitchen & delivery
@@ -1675,9 +1931,50 @@ const ACT = {
     };
     if (d.v === 'kot') printKot(sample); else Promise.all([qrSvg(waOrderLink()), logoImg()]).then(([qr, logo]) => printHtml(receiptHtml(sample, { customer: { stamps: 3 }, qr, logo })));
   },
+  invRetry: () => run(async () => { S.inv.ready = null; renderScreen(); }),
+  invTab: (d) => { S.inv.tab = d.v; renderScreen(); },
+  invFilter: (d) => { S.inv.filter = d.v; renderScreen(); },
+  invEdit: (d) => openStockEdit(d.id),
+  invMove: (d) => openStockMove(Number(d.id), d.k),
+  wasteReason: (d) => { S.m.reason = S.m.reason === d.v ? '' : d.v; renderStockMove(); },
+  invMoveSave: () => run(async () => {
+    const m = S.m, it = stockById(m.id), q = Number(m.qty);
+    if (m.qty === '' || !(q >= 0) || (m.move !== 'adjust' && !(q > 0))) throw new Error('Enter a quantity');
+    const change = m.move === 'adjust' ? q - Number(it.qty) : m.move === 'waste' ? -q : q;
+    if (!change) { closeModal(); return toast('No change — stock already matches'); }
+    await api.addMoves([{ stock_item_id: it.id, change, kind: m.move, unit_cost: m.move === 'purchase' ? Number(m.cost) || 0 : 0,
+      note: [m.reason, m.note.trim()].filter(Boolean).join(' · '), by_name: S.me.profile.name }]);
+    closeModal(); await loadInventory(); S.inv.movesLoaded = false; renderScreen();
+    toast(`${it.name}: now ${invQty(stockById(it.id).qty)} ${it.unit}`);
+  }),
+  invStarter: () => {
+    if (!confirm(`Add ${STARTER_STOCK.length} common café stock items (all at zero)? You can edit or hide any of them.`)) return;
+    run(async () => { await api.addStockItems(STARTER_STOCK.map(([name, category, unit]) => ({ name, category, unit }))); await loadInventory(); renderScreen(); toast('Starter list added — now enter what you have with Count'); });
+  },
+  rCat: (d) => { S.inv.rCat = d.id; S.inv.rItem = null; renderScreen(); },
+  rItem: (d) => { S.inv.rItem = d.id; renderScreen(); },
+  rAdd: (d) => { S.inv.draft[d.key] = recipeRows(d.key).concat([{ stock_item_id: '', qty: '' }]); renderScreen(); },
+  rDel: (d) => { const rows = recipeRows(d.key); rows.splice(Number(d.i), 1); S.inv.draft[d.key] = rows; renderScreen(); },
+  rSave: (d) => run(async () => {
+    const [itemId, k] = splitKey(d.key);
+    const rows = recipeRows(d.key).filter((r) => Number(r.stock_item_id) && Number(r.qty) > 0).map((r) => ({ stock_item_id: Number(r.stock_item_id), qty: Number(r.qty) }));
+    const ids = rows.map((r) => r.stock_item_id);
+    if (new Set(ids).size !== ids.length) throw new Error('The same ingredient is listed twice — combine them into one line');
+    await api.saveRecipe(itemId, k, rows);
+    delete S.inv.draft[d.key];
+    await loadInventory(); renderScreen(); toast('Recipe saved');
+  }),
+  histKind: (d) => { S.inv.histKind = d.v; renderScreen(); },
+  histReload: () => { S.inv.movesLoaded = false; renderScreen(); },
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
 
+const splitKey = (key) => { const i = key.lastIndexOf('|'); return [key.slice(0, i), key.slice(i + 1)]; };
+function recipeRows(key) {
+  if (S.inv.draft[key]) return S.inv.draft[key].map((r) => ({ ...r }));
+  const [itemId, k] = splitKey(key);
+  return S.inv.recipes.filter((r) => r.menu_item_id === itemId && r.option_key === k).map((r) => ({ stock_item_id: r.stock_item_id, qty: r.qty }));
+}
 const csvList = (v) => String(v).split(',').map((t) => t.trim()).filter(Boolean);
 const SUBMIT = {
   login: async (form) => {
@@ -1732,6 +2029,17 @@ const SUBMIT = {
     };
     await api.saveSettings(data); S.settings = data; toast('Settings saved');
   }),
+  stockEdit: (form) => run(async () => {
+    const id = S.m?.id;
+    const row = { name: form.name.value.trim(), category: form.category.value.trim() || 'General', unit: form.unit.value,
+      low_level: Math.max(0, Number(form.low_level.value) || 0), cost: Math.max(0, Number(form.cost.value) || 0), supplier: form.supplier.value.trim() };
+    if (!row.name) throw new Error('Name is required');
+    if (id) { row.id = id; row.active = form.active.checked; }
+    const saved = await api.saveStockItem(row);
+    const opening = id ? 0 : Number(form.opening?.value) || 0;
+    if (opening > 0) await api.addMoves([{ stock_item_id: saved.id, change: opening, kind: 'opening', unit_cost: row.cost, note: 'Opening stock', by_name: S.me.profile.name }]);
+    closeModal(); await loadInventory(); renderScreen(); toast(id ? `${row.name} saved` : `${row.name} added`);
+  }),
   addRider: (form) => run(async () => {
     await api.saveRider({ name: form.name.value.trim(), phone: form.phone.value.trim(), active: true });
     S.riders = await api.listRiders(); renderScreen(); toast('Rider added');
@@ -1743,6 +2051,12 @@ const BIND = {
   q: () => { renderCats(); renderGrid(); },
   phone: () => onPhoneInput(),
   feeOverride: () => { S.feeOverride = S.feeOverride === '' ? null : Math.max(0, Number(S.feeOverride) || 0); },
+  invq: () => {
+    const el = $('#inv-body'); if (!el) return;
+    const pos = $('[data-bind=invq]')?.selectionStart;
+    renderStockTab(el);
+    const inp = $('[data-bind=invq]'); if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch { /* ignore */ } }
+  },
   csq: () => { clearTimeout(custTimer); custTimer = setTimeout(() => run(async () => { await loadCustomers(); const el = $('#cust-rows'); if (el) el.innerHTML = custRows(); }), 250); }
 };
 
@@ -1759,7 +2073,7 @@ document.addEventListener('input', (e) => {
   const t = e.target;
   if (t.dataset.bind) {
     const k = t.dataset.bind;
-    if (k === 'csq') S.cs.q = t.value; else S[k] = t.value;
+    if (k === 'csq') S.cs.q = t.value; else if (k === 'invq') S.inv.q = t.value; else S[k] = t.value;
     BIND[k]?.();
     return;
   }
@@ -1769,6 +2083,11 @@ document.addEventListener('input', (e) => {
       if (t.dataset.m === 'custom' && t.value) { S.m.reason = ''; document.querySelectorAll('#dlg [data-act=dReason]').forEach((b) => b.classList.remove('on')); }
       refreshDiscountPreview();
     }
+    if (S.m.kind === 'stockMove' && t.dataset.m === 'qty') {
+      const it = stockById(S.m.id), q = Number(t.value || 0);
+      const after = S.m.move === 'adjust' ? q : Number(it.qty) + (S.m.move === 'waste' ? -q : q);
+      const b = $('#mv-after b'); if (b) b.textContent = `${invQty(after)} ${it.unit}`;
+    }
     if (S.m.kind === 'pay' && t.dataset.m === 'received') { const c = $('#change'); if (c) c.innerHTML = changeHtml(payBill()); document.querySelectorAll('#dlg [data-act=pCash]').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === Number(t.value))); }
     return;
   }
@@ -1777,6 +2096,12 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  if (t.dataset.rf) {
+    const rows = recipeRows(t.dataset.key);
+    rows[Number(t.dataset.i)][t.dataset.rf === 'sid' ? 'stock_item_id' : 'qty'] = t.value;
+    S.inv.draft[t.dataset.key] = rows; renderScreen();
+    return;
+  }
   if (t.dataset.photo && t.files?.[0]) {
     const id = t.dataset.photo, file = t.files[0];
     run(async () => {

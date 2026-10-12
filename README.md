@@ -109,6 +109,12 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 
 **Delivery** — assign a rider → *Out for delivery* → *Delivered + cash*. Shows cash each rider should hand in.
 
+**Stock (inventory)**
+- **Stock** tab: every ingredient and packaging item with quantity, alert level, cost price and value. **+ Stock in** records a purchase (and updates the cost price), **Waste** records spoilage with a reason, **Count** sets the real shelf count. Owner can add/edit items or tap **Add starter list** for 45 common café items (all at zero).
+- **Recipes & food cost** tab (owner edits): for each menu item and size, list the ingredients and amounts. Shows food cost and margin per item.
+- Stock goes down **automatically** when an order is added (only new items when a bill is edited) and comes back if the order is cancelled. Every change is in **History**.
+- Items at or below their alert level show a red number on the **Stock** button.
+
 **Reports (owner)** — today / 7 days / 30 days, sales by hour, payments, top sellers, staff incentives worked out from your policy tiers, **Print Z-report** at closing, and **Download orders (CSV)** for Excel.
 
 **Menu & prices (owner)** — change a price, hide an item, add a new one, upload a photo for any item (shown on the order screen; items without a photo get a coloured category tile). Every counter updates instantly. Prices: `549` for one price, `S=999, M=1549, L=2399` for sizes.
@@ -127,7 +133,7 @@ Any printer works through the browser's print dialog. For an 80mm thermal printe
 
 ## Updating an existing database
 
-If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.) For item photos, also run [`supabase/migrations/003_menu_photos.sql`](supabase/migrations/003_menu_photos.sql) once.
+If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.) For item photos, also run [`supabase/migrations/003_menu_photos.sql`](supabase/migrations/003_menu_photos.sql) once, and for inventory [`supabase/migrations/004_inventory.sql`](supabase/migrations/004_inventory.sql).
 
 ## Good to know
 

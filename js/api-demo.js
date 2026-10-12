@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0100';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0109';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -21,6 +21,7 @@ function fresh() {
     riders: [{ id: 1, name: 'Rider 1', phone: '', active: true }, { id: 2, name: 'Rider 2', phone: '', active: true }],
     customers: {},
     orders: [],
+    stock: [], recipes: [], moves: [], nextStock: 1, nextRecipe: 1, nextMove: 1,
     nextOrder: 1001,
     session: null
   };
@@ -104,6 +105,33 @@ export function createDemoApi() {
     },
     async ordersForPhone(phone) { load(); return clone(db.orders.filter((o) => o.customer_phone === phone).reverse().slice(0, 20)); },
     async getOrder(id) { load(); return clone(db.orders.find((o) => o.id === id) || null); },
+
+    // ---- inventory ----
+    async listStock() { load(); return clone(db.stock || []); },
+    async saveStockItem(it) {
+      load(); db.stock = db.stock || [];
+      if (!it.id) { it = { qty: 0, active: true, category: 'General', unit: 'pcs', low_level: 0, cost: 0, supplier: '', ...it, id: db.nextStock++ }; db.stock.push(it); }
+      else db.stock = db.stock.map((x) => (x.id === it.id ? { ...x, ...it } : x));
+      notify('stock'); return clone(db.stock.find((x) => x.id === it.id));
+    },
+    async addStockItems(rows) { const out = []; for (const r of rows) out.push(await this.saveStockItem({ ...r })); return out; },
+    async listRecipes() { load(); return clone(db.recipes || []); },
+    async saveRecipe(menuItemId, optionKey, rows) {
+      load(); db.recipes = (db.recipes || []).filter((r) => !(r.menu_item_id === menuItemId && r.option_key === optionKey));
+      rows.forEach((r) => db.recipes.push({ id: db.nextRecipe++, menu_item_id: menuItemId, option_key: optionKey, stock_item_id: r.stock_item_id, qty: Number(r.qty) }));
+      notify('stock');
+    },
+    async addMoves(moves) {
+      load(); db.moves = db.moves || []; db.stock = db.stock || [];
+      for (const m of moves) {
+        const row = { note: '', order_id: null, unit_cost: 0, by_name: '', ...m, id: db.nextMove++, created_at: new Date().toISOString() };
+        db.moves.push(row);
+        const it = db.stock.find((x) => x.id === m.stock_item_id);
+        if (it) { it.qty = Number(it.qty) + Number(m.change); if (m.kind === 'purchase' && Number(m.unit_cost) > 0) it.cost = Number(m.unit_cost); }
+      }
+      notify('stock');
+    },
+    async listMoves(limit = 300) { load(); return clone((db.moves || []).slice().reverse().slice(0, limit)); },
 
     async getCustomer(phone) { load(); return clone(db.customers[phone] || null); },
     async saveCustomer(c) { load(); db.customers[c.phone] = { ...(db.customers[c.phone] || {}), ...c }; notify('customers'); return clone(db.customers[c.phone]); },
