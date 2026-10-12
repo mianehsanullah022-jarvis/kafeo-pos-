@@ -152,6 +152,8 @@ export const DEFAULT_SETTINGS = {
   kot_split: true,               // separate slips for kitchen and bar
   receipt_footer: 'Thank you for visiting KAFEO — see you again!',
   receipt_loyalty: true,         // show the customer's stamps on the receipt
+  day_start_hour: 6,             // business day runs 6 AM to 6 AM (late-night sales count for the same day)
+  expense_types: ['Supplies', 'Groceries', 'Utilities', 'Salary / advance', 'Rent', 'Maintenance', 'Transport / fuel', 'Marketing', 'Other'],
   paper: '80safe',               // '80safe' (64mm print), '80full' (72mm), '58' (46mm)
   print_offset_mm: 0,
   loyalty_stamps: 5,

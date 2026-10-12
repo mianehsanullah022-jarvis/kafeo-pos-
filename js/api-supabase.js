@@ -78,6 +78,15 @@ export function createSupabaseApi(url, key) {
       if (rows.length) must(await sb.from('recipes').insert(rows.map((r) => ({ menu_item_id: menuItemId, option_key: optionKey, stock_item_id: r.stock_item_id, qty: r.qty }))));
     },
     async addMoves(moves) { if (moves.length) must(await sb.from('stock_moves').insert(moves)); },
+    async movesBetween(fromIso, toIso) {
+      return must(await sb.from('stock_moves').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).limit(10000));
+    },
+    // ---- expenses ----
+    async expensesBetween(fromIso, toIso) {
+      return must(await sb.from('expenses').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).limit(5000));
+    },
+    async addExpense(e) { return must(await sb.from('expenses').insert(e).select().single()); },
+    async deleteExpense(id) { must(await sb.from('expenses').delete().eq('id', id)); },
     async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
 
     async getCustomer(phone) { return must(await sb.from('customers').select('*').eq('phone', phone).maybeSingle()); },

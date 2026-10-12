@@ -1,16 +1,18 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-0109';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-0109';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0109';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-0125';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-0125';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0125';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-0109';
+} from './logic.js?v=2026.10.13-0125';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-0125';
+import { pdfBlob } from './pdf.js?v=2026.10.13-0125';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-0109')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-0125')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -832,6 +834,7 @@ function renderOrders(el) {
       <span class="grow"></span>
       <div class="kpi"><div class="l">Running bills</div><div class="v">${bills.length}</div></div>
       <div class="kpi"><div class="l">Waiting to be paid</div><div class="v">${fmt(due)}</div></div>
+      <button type="button" class="btn btn-lg" data-act="expenses">Add expense</button>
       <a class="btn btn-primary btn-lg" href="#order">+ New order</a>
     </div>
     <div class="seg" role="tablist" style="max-width:420px">
@@ -872,6 +875,145 @@ function renderOrders(el) {
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
         <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty panel">Nothing paid yet today.</div>')}`;
+}
+
+// =====================================================================
+// REPORTS CENTER — pick a report, choose start & end date/time, view / PDF / print / Excel
+// =====================================================================
+const pad2 = (n) => String(n).padStart(2, '0');
+const toLocalInput = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+function businessDayStart(ref = new Date()) {
+  const h = Number(S.settings.day_start_hour ?? 6);
+  const d = new Date(ref); d.setHours(h, 0, 0, 0);
+  if (ref < d) d.setDate(d.getDate() - 1);
+  return d;
+}
+function presetRange(p) {
+  const h = Number(S.settings.day_start_hour ?? 6);
+  const day = businessDayStart();
+  const plusDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  if (p === 'today') return [day, plusDays(day, 1)];
+  if (p === 'yesterday') return [plusDays(day, -1), day];
+  if (p === 'last7') return [plusDays(day, -6), plusDays(day, 1)];
+  if (p === 'week') { const mon = plusDays(day, -((day.getDay() + 6) % 7)); return [mon, plusDays(mon, 7)]; }
+  if (p === 'month') { const a = new Date(day.getFullYear(), day.getMonth(), 1, h); return [a, new Date(day.getFullYear(), day.getMonth() + 1, 1, h)]; }
+  if (p === 'lastMonth') { const a = new Date(day.getFullYear(), day.getMonth() - 1, 1, h); return [a, new Date(day.getFullYear(), day.getMonth(), 1, h)]; }
+  return null;
+}
+function rcInit() {
+  if (S.rc) return;
+  const [a, b] = presetRange('today');
+  S.rc = { id: 'full', preset: 'today', from: toLocalInput(a), to: toLocalInput(b), f: { type: 'all', method: 'all', category: 'all', stockItem: '' }, result: null, busy: false, warn: '' };
+}
+const rcRangeText = () => {
+  const def = REPORTS[S.rc.id];
+  if (def.noDates) return 'As of ' + rdt(new Date());
+  return `${rdt(new Date(S.rc.from))}  -  ${rdt(new Date(S.rc.to))}`;
+};
+async function rcLoad() {
+  const rc = S.rc, def = REPORTS[rc.id];
+  const from = new Date(rc.from), to = new Date(rc.to);
+  if (!def.noDates && !(from < to)) throw new Error('The end date/time must be after the start');
+  rc.busy = true; rc.warn = ''; renderScreen();
+  const data = { orders: [], expenses: [], moves: [], movesAfter: [] };
+  try {
+    const jobs = [];
+    if (def.needs.includes('orders')) jobs.push(api.ordersBetween(from.toISOString(), to.toISOString()).then((x) => { data.orders = x; }));
+    if (def.needs.includes('expenses')) jobs.push(api.expensesBetween(from.toISOString(), to.toISOString()).then((x) => { data.expenses = x; }).catch(() => { rc.warn = 'Expenses aren’t set up yet (run supabase/migrations/005_expenses.sql) — shown as zero.'; }));
+    if (def.needs.includes('moves')) {
+      jobs.push(api.movesBetween(from.toISOString(), to.toISOString()).then((x) => { data.moves = x; }));
+      if (rc.id === 'stockItem') jobs.push(api.movesBetween(to.toISOString(), new Date(Date.now() + 864e5).toISOString()).then((x) => { data.movesAfter = x; }));
+    }
+    if (def.needs.includes('inventory') || def.needs.includes('moves')) jobs.push(loadInventory());
+    await Promise.all(jobs);
+    if ((def.needs.includes('inventory') || def.needs.includes('moves')) && !S.inv.ready) throw new Error('Inventory isn’t set up yet — run supabase/migrations/004_inventory.sql');
+    rc.result = def.build(data, rc.f, { menu: S.menu, settings: S.settings, stock: S.inv.stock, recipes: S.inv.recipes });
+    rc.builtFor = rc.id + rc.from + rc.to + JSON.stringify(rc.f);
+  } finally { rc.busy = false; }
+  renderScreen();
+}
+const rcFileName = (ext) => `KAFEO-${REPORTS[S.rc.id].title.replace(/[^\w]+/g, '-')}-${S.rc.from.slice(0, 10)}${REPORTS[S.rc.id].noDates ? '' : '-to-' + S.rc.to.slice(0, 10)}.${ext}`;
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function rcEnsure() {
+  const rc = S.rc;
+  if (!rc.result || rc.builtFor !== rc.id + rc.from + rc.to + JSON.stringify(rc.f)) await rcLoad();
+  return rc.result;
+}
+function printA4(html, landscape) {
+  const area = $('#print-area');
+  area.innerHTML = `<style>@page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }</style><div class="a4">${html}</div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+}
+
+function renderReportsCenter(el) {
+  rcInit();
+  const rc = S.rc, def = REPORTS[rc.id];
+  const fl = def.filters || [];
+  el.innerHTML = `
+    <div class="rc">
+      <nav class="rc-list" aria-label="Reports">${REPORT_GROUPS.map(([g, ids]) => `<div class="rc-group">${g}</div>${ids.map((id) =>
+        `<button type="button" class="${rc.id === id ? 'on' : ''}" data-act="rcPick" data-id="${id}"><b>${esc(REPORTS[id].title)}</b><small>${esc(REPORTS[id].desc)}</small></button>`).join('')}`).join('')}</nav>
+      <section class="rc-main">
+        <div class="panel stack">
+          <div class="row wrap"><div class="grow"><h2 style="margin:0;font-size:20px">${esc(def.title)}</h2><div class="muted small">${esc(def.desc)}</div></div></div>
+          ${def.noDates ? '' : `
+          <div class="chips">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last7', 'Last 7 days'], ['month', 'This month'], ['lastMonth', 'Last month']].map(([v, l]) =>
+            `<button type="button" class="chip-sm ${rc.preset === v ? 'on' : ''}" data-act="rcPreset" data-v="${v}">${l}</button>`).join('')}</div>
+          <div class="cols">
+            <label class="field">Start date & time<input type="datetime-local" data-rc="from" value="${esc(rc.from)}"></label>
+            <label class="field">End date & time<input type="datetime-local" data-rc="to" value="${esc(rc.to)}"></label>
+          </div>
+          <div class="muted small">“Today” runs ${Number(S.settings.day_start_hour ?? 6)}:00 AM to ${Number(S.settings.day_start_hour ?? 6)}:00 AM next day, so late-night sales count in the same day.</div>`}
+          ${fl.length ? `<div class="cols">
+            ${fl.includes('category') ? `<label class="field">Category<select data-rcf="category"><option value="all">All categories</option>${S.menu.categories.map((c) => `<option value="${esc(c.id)}" ${rc.f.category === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>` : ''}
+            ${fl.includes('type') ? `<label class="field">Order type<select data-rcf="type">${[['all', 'All types'], ['dine', 'Dine-in'], ['take', 'Takeaway'], ['deliv', 'Delivery']].map(([v, l]) => `<option value="${v}" ${rc.f.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
+            ${fl.includes('method') ? `<label class="field">Payment method<select data-rcf="method">${[['all', 'All methods'], ...PAY_METHODS.map((m) => [m, m])].map(([v, l]) => `<option value="${esc(v)}" ${rc.f.method === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}
+            ${fl.includes('stockItem') ? `<label class="field">Stock item<select data-rcf="stockItem"><option value="">Choose…</option>${S.inv.stock.map((s) => `<option value="${s.id}" ${String(rc.f.stockItem) === String(s.id) ? 'selected' : ''}>${esc(s.name)} (${esc(s.unit)})</option>`).join('')}</select></label>` : ''}
+          </div>` : ''}
+          <div class="row wrap rc-actions">
+            <button type="button" class="btn btn-dark btn-lg" data-act="rcView" ${rc.busy ? 'disabled' : ''}>${rc.busy ? 'Loading…' : 'View report'}</button>
+            <button type="button" class="btn btn-primary btn-lg" data-act="rcPdf" ${rc.busy ? 'disabled' : ''}>${icon('print', 18)} Download PDF</button>
+            <button type="button" class="btn btn-lg" data-act="rcA4" ${rc.busy ? 'disabled' : ''}>Print A4</button>
+            <button type="button" class="btn btn-lg" data-act="rcThermal" ${rc.busy ? 'disabled' : ''}>Thermal print</button>
+            <button type="button" class="btn btn-lg" data-act="rcCsv" ${rc.busy ? 'disabled' : ''}>Excel (CSV)</button>
+          </div>
+          ${rc.warn ? `<div class="error">${esc(rc.warn)}</div>` : ''}
+        </div>
+        <div class="rc-preview">${rc.result && rc.builtFor === rc.id + rc.from + rc.to + JSON.stringify(rc.f) ? toHtml(rc.id, rc.result, rcRangeText()) : `<div class="empty panel">Choose the dates and press <b>View report</b> — or go straight to <b>Download PDF</b>.</div>`}</div>
+      </section>
+    </div>`;
+}
+
+// ----- expenses (any staff) -----
+async function openExpenses() {
+  const from = businessDayStart(), to = new Date(from.getTime() + 864e5);
+  let list = [], ready = true;
+  try { list = await api.expensesBetween(from.toISOString(), to.toISOString()); } catch { ready = false; }
+  S.m = { kind: 'expense', amount: '', method: 'Cash', type: (S.settings.expense_types || [])[0] || 'Other', description: '', list, ready };
+  renderExpenseModal();
+}
+function renderExpenseModal() {
+  const m = S.m;
+  const types = S.settings.expense_types || ['Other'];
+  openModal('md', `
+    ${modalHead('Add expense', 'Money paid out — it’s taken off the cash balance in reports and the Z-report')}
+    <div class="mb stack">
+      ${m.ready ? '' : '<div class="error">Expenses need a one-time database update: run supabase/migrations/005_expenses.sql in Supabase.</div>'}
+      <label class="field">Amount (Rs)<input data-m="amount" type="number" min="1" step="1" inputmode="numeric" value="${esc(m.amount)}" autofocus></label>
+      <div><div class="lbl">Type</div><div class="chips">${types.map((t) => `<button type="button" class="chip-sm ${m.type === t ? 'on' : ''}" data-act="expType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
+      <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${m.method === pm ? 'on' : ''}" data-act="expMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
+      <label class="field">Description<input data-m="description" value="${esc(m.description)}" placeholder="e.g. 2 crates milk from Nestle rider"></label>
+      ${m.list.length ? `<div><div class="lbl">Today’s expenses · ${fmt(m.list.reduce((a, e) => a + Number(e.amount), 0))}</div>
+        <div class="tbl-wrap"><table class="tbl compact"><tbody>${m.list.slice().reverse().map((e) => `<tr><td>${new Date(e.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${esc(e.type)}<div class="muted small">${esc(e.description)}</div></td><td>${esc(e.method)}</td><td class="num"><b>${fmt(e.amount)}</b></td>
+          <td class="num">${isOwner() ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="expDel" data-id="${e.id}" aria-label="Delete expense">${icon('trash', 16)}</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+    </div>
+    <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Close</button>
+      <button type="button" class="btn btn-primary btn-lg" data-act="expSave" ${m.ready ? '' : 'disabled'}>Save expense</button></footer>`);
 }
 
 // =====================================================================
@@ -1213,6 +1355,16 @@ async function loadReport() {
 }
 function renderReports(el) {
   el.className = 'screen';
+  const tab = S.rep.tab || 'center';
+  el.innerHTML = `<div class="screen-head"><h1>Reports</h1><span class="grow"></span>
+    <div class="seg" role="tablist" style="min-width:360px">
+      <button type="button" class="${tab === 'center' ? 'on' : ''}" data-act="repTab" data-v="center">Reports center</button>
+      <button type="button" class="${tab === 'dash' ? 'on' : ''}" data-act="repTab" data-v="dash">Live dashboard</button></div></div>
+    <div id="rep-body"></div>`;
+  if (tab === 'center') renderReportsCenter($('#rep-body')); else renderReportsDash($('#rep-body'));
+}
+function renderReportsDash(el) {
+  el.className = 'stack';
   if (!S.rep.loaded) { el.innerHTML = '<div class="empty">Loading report…</div>'; run(async () => { await loadReport(); renderScreen(); }); return; }
   const r = summarize(S.rep.orders);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
@@ -1222,7 +1374,7 @@ function renderReports(el) {
   const typeTotal = r.orders || 1;
   const hl = (h) => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
   el.innerHTML = `
-    <div class="screen-head"><h1>Reports</h1><span class="grow"></span>
+    <div class="screen-head"><span class="muted">Quick view of sales</span><span class="grow"></span>
       <div class="seg" role="group" aria-label="Period" style="min-width:300px">${[['today', 'Today'], ['week', '7 days'], ['month', '30 days']].map(([v, l]) =>
         `<button type="button" class="${S.rep.range === v ? 'on' : ''}" aria-pressed="${S.rep.range === v}" data-act="range" data-v="${v}">${l}</button>`).join('')}</div>
       <button type="button" class="btn" data-act="csv">Download orders (CSV)</button>
@@ -1437,7 +1589,11 @@ function renderSettings(el) {
         <label class="field">Round the total to nearest<select name="round_to">${[[0, 'Off (exact)'], [5, 'Rs 5'], [10, 'Rs 10']].map(([v, l]) => `<option value="${v}" ${Number(s.round_to) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       </div>
       <label class="check"><input type="checkbox" name="service_default_on" ${s.service_default_on !== false ? 'checked' : ''}> Add service charge to dine-in orders by default (cashier can switch it off per order)</label>
-      <label class="field">Tables (comma separated)<input name="tables" value="${esc((s.tables || []).join(', '))}"></label>
+      <div class="cols">
+        <label class="field">Tables (comma separated)<input name="tables" value="${esc((s.tables || []).join(', '))}"></label>
+        <label class="field">Business day starts at (for “Today” in reports)<select name="day_start_hour">${Array.from({ length: 13 }, (_, h) => `<option value="${h}" ${Number(s.day_start_hour ?? 6) === h ? 'selected' : ''}>${h === 0 ? '12:00 midnight' : h + ':00 AM'}</option>`).join('')}</select></label>
+      </div>
+      <label class="field">Expense types — one per line<textarea name="expense_types" style="min-height:70px">${esc((s.expense_types || []).join('\n'))}</textarea></label>
       <h2>Discounts</h2>
       <div class="cols">
         <label class="field">Most a cashier can give (%) — owner has no limit<input name="cashier_max_discount_pct" type="number" min="0" max="100" value="${esc(s.cashier_max_discount_pct)}"></label>
@@ -1743,6 +1899,10 @@ async function printAfterSave(o, { kot, onlyNew, receipt }) {
 }
 async function printZ() {
   const logo = await logoImg();
+  let exp = [];
+  try { const a = startOfDay(); exp = await api.expensesBetween(a.toISOString(), new Date(a.getTime() + 864e5).toISOString()); } catch { exp = []; }
+  const cashExp = exp.filter((e) => e.method === 'Cash').reduce((a, e) => a + Number(e.amount), 0);
+  const allExp = exp.reduce((a, e) => a + Number(e.amount), 0);
   const r = summarize(S.today);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
   printHtml(`<div class="slip rcpt"><div class="c">${logo}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
@@ -1754,6 +1914,9 @@ async function printZ() {
     <div class="r"><span>Delivery fees</span><span>${num(r.fees)}</span></div><hr>
     ${Object.entries(r.byPay).map(([k, v]) => `<div class="r"><span>${esc(k)}</span><span>${num(v)}</span></div>`).join('')}<hr>
     ${Object.entries(r.byReason).map(([k, v]) => `<div class="r sm"><span>Disc: ${esc(k)}</span><span>${num(v)}</span></div>`).join('')}
+    <div class="r"><span>Expenses (all)</span><span>${num(allExp)}</span></div>
+    <div class="r big"><span>Expected cash in drawer</span><span>${num((r.byPay['Cash'] || 0) + (r.byPay['Cash (COD)'] || 0) - cashExp)}</span></div>
+    <div class="sm">= cash sales ${num((r.byPay['Cash'] || 0) + (r.byPay['Cash (COD)'] || 0))} - cash expenses ${num(cashExp)}</div><hr>
     <div class="r"><span>Unpaid bills (${r.unpaidCount})</span><span>${num(r.unpaid)}</span></div>
     <div class="r"><span>Cancelled orders</span><span>${r.cancelled}</span></div><hr>
     ${inc.pools.map((p) => `<div class="r"><span>${esc(p.label)} (${p.count})</span><span>${num(p.earned)}</span></div>`).join('')}
@@ -1931,6 +2094,32 @@ const ACT = {
     };
     if (d.v === 'kot') printKot(sample); else Promise.all([qrSvg(waOrderLink()), logoImg()]).then(([qr, logo]) => printHtml(receiptHtml(sample, { customer: { stamps: 3 }, qr, logo })));
   },
+  repTab: (d) => { S.rep.tab = d.v; renderScreen(); },
+  rcPick: (d) => { S.rc.id = d.id; S.rc.result = null; renderScreen(); },
+  rcPreset: (d) => { const r = presetRange(d.v); S.rc.preset = d.v; S.rc.from = toLocalInput(r[0]); S.rc.to = toLocalInput(r[1]); S.rc.result = null; renderScreen(); },
+  rcView: () => run(rcLoad),
+  rcPdf: () => run(async () => {
+    const res = await rcEnsure();
+    saveBlob(pdfBlob(toPdfDoc(S.rc.id, res, rcRangeText())), rcFileName('pdf'));
+    toast('PDF downloaded');
+  }),
+  rcA4: () => run(async () => { const res = await rcEnsure(); printA4(toHtml(S.rc.id, res, rcRangeText()), !!REPORTS[S.rc.id].landscape); }),
+  rcThermal: () => run(async () => { const res = await rcEnsure(); printHtml(toThermal(S.rc.id, res, rcRangeText())); }),
+  rcCsv: () => run(async () => { const res = await rcEnsure(); saveBlob(new Blob([toCsv(res)], { type: 'text/csv' }), rcFileName('csv')); toast('Excel file downloaded'); }),
+  expenses: () => run(openExpenses),
+  expType: (d) => { S.m.type = d.v; renderExpenseModal(); },
+  expMethod: (d) => { S.m.method = d.v; renderExpenseModal(); },
+  expSave: () => run(async () => {
+    const m = S.m, amount = Math.round(Number(m.amount));
+    if (!(amount > 0)) throw new Error('Enter the amount');
+    const e = await api.addExpense({ amount, method: m.method, type: m.type, description: m.description.trim(), by_name: S.me.profile.name, created_by: LIVE ? S.me.user.id : null });
+    m.list.push(e); m.amount = ''; m.description = '';
+    renderExpenseModal(); toast(`Expense saved · ${fmt(amount)}`);
+  }),
+  expDel: (d) => {
+    if (!confirm('Delete this expense?')) return;
+    run(async () => { await api.deleteExpense(Number(d.id)); S.m.list = S.m.list.filter((e) => e.id !== Number(d.id)); renderExpenseModal(); });
+  },
   invRetry: () => run(async () => { S.inv.ready = null; renderScreen(); }),
   invTab: (d) => { S.inv.tab = d.v; renderScreen(); },
   invFilter: (d) => { S.inv.filter = d.v; renderScreen(); },
@@ -2017,7 +2206,8 @@ const SUBMIT = {
       prices_include_tax: form.prices_include_tax.checked, tax_number: form.tax_number.value.trim(),
       service_pct: pct(form.service_pct.value), service_default_on: form.service_default_on.checked,
       delivery_fee: Math.max(0, Number(form.delivery_fee.value) || 0), round_to: Number(form.round_to.value) || 0,
-      tables: csvList(form.tables.value),
+      tables: csvList(form.tables.value), day_start_hour: Number(form.day_start_hour.value) || 0,
+      expense_types: form.expense_types.value.split('\n').map((l) => l.trim()).filter(Boolean),
       cashier_max_discount_pct: pct(form.cashier_max_discount_pct.value),
       quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),
       banks: csvList(form.banks.value),
@@ -2096,6 +2286,8 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  if (t.dataset.rc && S.rc) { S.rc[t.dataset.rc] = t.value; S.rc.preset = 'custom'; S.rc.result = null; renderScreen(); return; }
+  if (t.dataset.rcf && S.rc) { S.rc.f[t.dataset.rcf] = t.value; S.rc.result = null; renderScreen(); return; }
   if (t.dataset.rf) {
     const rows = recipeRows(t.dataset.key);
     rows[Number(t.dataset.i)][t.dataset.rf === 'sid' ? 'stock_item_id' : 'qty'] = t.value;

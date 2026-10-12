@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0109';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0125';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -131,6 +131,14 @@ export function createDemoApi() {
       }
       notify('stock');
     },
+    async movesBetween(fromIso, toIso) { load(); return clone((db.moves || []).filter((m) => m.created_at >= fromIso && m.created_at < toIso)); },
+    async expensesBetween(fromIso, toIso) { load(); return clone((db.expenses || []).filter((e) => e.created_at >= fromIso && e.created_at < toIso)); },
+    async addExpense(e) {
+      load(); db.expenses = db.expenses || []; db.nextExpense = db.nextExpense || 1;
+      const row = { method: 'Cash', type: 'Other', description: '', by_name: '', ...e, id: db.nextExpense++, created_at: new Date().toISOString() };
+      db.expenses.push(row); notify('expenses'); return clone(row);
+    },
+    async deleteExpense(id) { load(); db.expenses = (db.expenses || []).filter((e) => e.id !== id); notify('expenses'); },
     async listMoves(limit = 300) { load(); return clone((db.moves || []).slice().reverse().slice(0, limit)); },
 
     async getCustomer(phone) { load(); return clone(db.customers[phone] || null); },
