@@ -1,10 +1,11 @@
-// KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Reports, Customers, Menu, Settings.
+// KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js';
 import { DEFAULT_SETTINGS } from './menu-seed.js';
 import {
-  fmt, num, TYPE_LABEL, STATUS_LABEL, bmsmReward, computeTotals, loyaltyAfterPayment, rewardReady,
-  cleanPhone, phoneOk, waLink, summarize, incentives, minutesSince, startOfDay
+  fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
+  cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
+  minutesSince, startOfDay
 } from './logic.js';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -12,16 +13,11 @@ const api = LIVE
   ? (await import('./api-supabase.js')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
-const CAFE = {
-  address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore',
-  phone: '0304 2077720',
-  web: 'kafeo.com.pk',
-  insta: '@kafeo_official'
-};
-const PAY_METHODS = ['Cash', 'Card', 'JazzCash', 'Easypaisa'];
+const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
 const LATE_MIN = 15;
+const NOTE_CHIPS = ['No onions', 'Extra spicy', 'Less spicy', 'Extra cheese', 'No mayo', 'Well done', 'Less sugar', 'No ice'];
 
-// ---------- small helpers ----------
+// ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ICON = {
@@ -31,9 +27,20 @@ const ICON = {
   reports: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',
   customers: 'M5 8a4 4 0 1 0 8 0a4 4 0 1 0 -8 0 M2 21a7 7 0 0 1 14 0 M17 4l1.2 2.4L21 7l-2 2 .5 3-2.5-1.4',
   menu: 'M4 6h16 M4 12h16 M4 18h10',
-  settings: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6 M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+  settings: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6 M12 2v3 M12 19v3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M2 12h3 M19 12h3 M4.9 19.1L7 17 M17 7l2.1-2.1',
   me: 'M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8 M4 21a8 8 0 0 1 16 0',
-  search: 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M20 20l-4-4'
+  search: 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M20 20l-4-4',
+  bills: 'M6 2h12v20l-3-2-3 2-3-2-3 2V2z M9 7h6 M9 11h6 M9 15h4',
+  trash: 'M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3',
+  percent: 'M19 5L5 19 M6.5 9a2.5 2.5 0 1 0 0-5a2.5 2.5 0 1 0 0 5 M17.5 20a2.5 2.5 0 1 0 0-5a2.5 2.5 0 1 0 0 5',
+  table: 'M3 8h18 M5 8v11 M19 8v11 M8 8l1-4h6l1 4',
+  user: 'M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8 M4 21a8 8 0 0 1 16 0',
+  note: 'M5 4h14v16H5z M9 9h6 M9 13h6',
+  x: 'M6 6l12 12 M18 6L6 18',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4z M13 7l4 4',
+  print: 'M7 9V3h10v6 M7 17H4v-7h16v7h-3 M7 14h10v7H7z',
+  check: 'M5 12l5 5 9-10',
+  star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'
 };
 const icon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k]}"></path></svg>`;
 
@@ -53,27 +60,27 @@ const S = {
   open: [], today: [], route: 'order', live: 'connecting', seenNew: null, busy: false,
   // order screen
   cat: null, q: '', cart: [], type: 'dine', table: '', phone: '', custName: '', address: '', notes: '',
-  disc: 'none', pay: 'Cash', customer: null, billsOpen: false,
-  // kitchen
+  discount: null, serviceOn: true, feeOverride: null, customer: null, editing: null,
+  billsOpen: false, billsTab: 'open',
+  m: null,        // state of the open pop-up
   station: 'all',
-  // reports
   rep: { range: 'today', orders: [], loaded: false },
-  // customers
   cs: { q: '', list: [], sel: null, orders: [] },
-  // menu editor
   mcat: null
 };
 const role = () => S.me?.profile?.role;
 const isOwner = () => role() === 'owner';
 const canSee = (id) => ROUTES.find((r) => r.id === id)?.roles.includes(role());
 const homeRoute = () => ({ owner: 'order', cashier: 'order', kitchen: 'kitchen', rider: 'delivery' }[role()] || 'order');
+const req = () => Number(S.settings.loyalty_stamps) || 5;
+const loyalPct = () => Number(S.settings.loyalty_discount_pct) || 50;
 
 // ---------- toast ----------
 let toastTimer, toastAction = null;
 function toast(msg, opts = {}) {
   const el = $('#toast');
   toastAction = opts.action?.fn || null;
-  el.innerHTML = `<div class="t ${opts.err ? 'err' : ''}"><span>${esc(msg)}</span>${opts.action ? `<button type="button" data-act="toastAct">${esc(opts.action.label)}</button>` : ''}</div>`;
+  el.innerHTML = `<div class="t ${opts.err ? 'err' : ''}">${opts.err ? '' : icon('check', 18)}<span>${esc(msg)}</span>${opts.action ? `<button type="button" data-act="toastAct">${esc(opts.action.label)}</button>` : ''}</div>`;
   el.className = 'show';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.className = ''; toastAction = null; }, opts.action ? 9000 : 3500);
@@ -84,7 +91,7 @@ async function run(fn) {
 
 // ---------- boot ----------
 async function boot() {
-  try { S.me = await api.session(); } catch (e) { S.me = null; }
+  try { S.me = await api.session(); } catch { S.me = null; }
   if (!S.me) return renderLogin();
   return startApp();
 }
@@ -98,9 +105,9 @@ function renderLogin(error = '') {
       ${error ? `<div class="error" role="alert">${esc(error)}</div>` : ''}
       <label class="field">Email<input name="email" type="email" autocomplete="username" required></label>
       <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Sign in</button>
       ${LIVE ? '<div class="muted small">Forgot your password? Ask the owner to reset it.</div>' : `
-      <div class="demo-note"><b>Demo mode</b> — the database isn't connected yet, so data stays in this browser.<br>
+      <div class="demo-note"><b>Demo mode</b> — the database isn't connected, so data stays in this browser.<br>
       Password for all demo logins: <b>${DEMO_PASSWORD}</b><br>
       ${DEMO_EMAILS.map((e) => `<button type="button" class="btn btn-sm" style="margin:6px 6px 0 0" data-act="demoFill" data-email="${e}">${e}</button>`).join('')}</div>`}
     </form>
@@ -124,6 +131,7 @@ async function startApp() {
   await run(loadAll);
   S.cat = S.cat || S.menu.categories[0]?.id || null;
   S.mcat = S.mcat || S.cat;
+  S.serviceOn = S.settings.service_default_on !== false;
   S.seenNew = new Set(S.open.filter((o) => o.status === 'new').map((o) => o.id));
   unsub?.();
   unsub = api.subscribe(onLive);
@@ -155,11 +163,11 @@ function onLive(kind, payload) {
     if (S.live === 'on') scheduleRefresh();
     return renderLiveDot();
   }
-  if (kind === 'menu') return run(async () => { S.menu = await api.loadMenu(); rerenderIf(['order', 'menu']); });
+  if (kind === 'menu') return run(async () => { S.menu = await api.loadMenu(); if (S.route === 'order') { renderCats(); renderGrid(); } else rerenderIf(['menu']); });
   if (kind === 'settings') return run(async () => {
     S.settings = { ...DEFAULT_SETTINGS, ...(await api.loadSettings()) };
     S.riders = await api.listRiders();
-    rerenderIf(['order', 'delivery', 'settings']);
+    if (S.route === 'order') renderSummary(); else rerenderIf(['delivery', 'settings']);
   });
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
@@ -188,11 +196,10 @@ function beep() {
       g.gain.setValueAtTime(0.25, ctx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.18);
       o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.2);
     });
-  } catch { /* sound not allowed until the screen is tapped once */ }
+  } catch { /* sound needs one tap on the screen first */ }
 }
 function rerenderIf(routes) { if (routes.includes(S.route)) renderScreen(); }
 
-// Safety net: refresh every minute and when the tablet wakes up.
 setInterval(() => { if (S.me?.profile) scheduleRefresh(); if (S.route === 'kitchen') renderScreen(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.me?.profile) scheduleRefresh(); });
 
@@ -226,7 +233,12 @@ function renderShell() {
     </div>
   </div>
   <div id="drawer"></div>
-  <dialog id="dlg"></dialog>`;
+  <dialog id="dlg" aria-labelledby="dlg-title"></dialog>`;
+  $('#dlg').addEventListener('close', () => {
+    const kind = S.m?.kind;
+    S.m = null;
+    if (kind === 'details' && S.route === 'order') renderSummary();
+  });
   renderLiveDot();
   renderScreen();
 }
@@ -236,13 +248,24 @@ function renderLiveDot() {
   el.className = 'live-dot ' + S.live;
   el.innerHTML = `<i></i>${S.live === 'on' ? 'Live' : S.live === 'off' ? 'Offline' : 'Connecting'}`;
 }
-
 function renderScreen() {
   const el = $('#screen');
   if (!el) return;
   const map = { order: renderOrder, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
   (map[S.route] || renderOrder)(el);
 }
+
+// ---------- pop-up (dialog) helpers ----------
+function openModal(size, html) {
+  const d = $('#dlg');
+  d.className = size;
+  d.innerHTML = html;
+  if (!d.open) d.showModal();
+}
+function closeModal() { const d = $('#dlg'); if (d?.open) d.close(); else S.m = null; }
+const modalHead = (title, sub = '') => `
+  <header class="mh"><div><h2 id="dlg-title">${title}</h2>${sub ? `<div class="muted small">${sub}</div>` : ''}</div>
+  <button type="button" class="icon-btn" data-act="closeModal" aria-label="Close">${icon('x', 20)}</button></header>`;
 
 // =====================================================================
 // ORDER & BILLING
@@ -253,124 +276,135 @@ function visibleItems() {
   if (q) return S.menu.items.filter((i) => i.active && (i.name.toLowerCase().includes(q) || (i.note || '').toLowerCase().includes(q)));
   return itemsIn(S.cat);
 }
-function discPct() {
-  if (S.disc === 'ten') return 10;
-  if (S.disc === 'loyal') return Number(S.settings.loyalty_discount_pct) || 0;
-  return 0;
-}
-const cartTotals = () => computeTotals(S.cart, { discPct: discPct(), taxPct: S.settings.tax_pct, deliveryFee: S.settings.delivery_fee, type: S.type });
 const unpaidBills = () => S.open.filter((o) => !o.paid && o.status !== 'cancelled');
+const loyaltyAvailable = () => phoneOk(cleanPhone(S.phone)) && rewardReady(S.customer, req());
+const deliveryFee = () => (S.feeOverride ?? Number(S.settings.delivery_fee)) || 0;
+const ctxNow = (method = 'Cash') => ({ type: S.type, method, discount: S.discount, serviceOn: S.serviceOn, deliveryFee: deliveryFee(), settings: S.settings });
+function ctxForOrder(o, method) {
+  const m = o.meta || {};
+  const disc = m.discount || (Number(o.discount) > 0 ? { scope: 'bill', type: 'amt', value: Number(o.discount), reason: o.discount_label } : null);
+  return { type: o.type, method, discount: disc, serviceOn: m.serviceOn ?? Number(o.service_charge) > 0, deliveryFee: Number(o.delivery_fee) || 0, settings: S.settings };
+}
+function discountLabel(d) {
+  if (!d) return '';
+  if (d.reason === 'Loyalty reward') return 'Loyalty';
+  return [d.reason || 'Discount', d.bank].filter(Boolean).join(' · ');
+}
+const discountText = (d) => !d ? '' : d.scope === 'items' ? 'Item-wise' : d.type === 'pct' ? `${num(d.value)}%` : fmt(d.value);
 
 function renderOrder(el) {
   el.className = 'order';
   el.innerHTML = `
-  <div class="order-menu">
-    <div class="order-top">
+  <nav class="catbar" aria-label="Menu categories" id="cats"></nav>
+  <section class="order-menu" aria-label="Menu">
+    <div class="toolbar">
       <label class="search">${icon('search', 18)}<span class="sr">Search menu</span>
-        <input data-bind="q" type="search" placeholder="Search menu — e.g. zinger, latte" value="${esc(S.q)}" autocomplete="off"></label>
-      <span class="grow"></span>
-      <button type="button" class="btn" data-act="bills">Open bills <span class="tag" id="bills-badge"></span></button>
+        <input data-bind="q" type="search" placeholder="Search menu… e.g. zinger, latte" value="${esc(S.q)}" autocomplete="off"></label>
+      <button type="button" class="tool" data-act="bills" data-tab="open">${icon('bills', 20)}<span>Open bills</span><b class="badge" id="bills-badge">0</b></button>
+      <button type="button" class="tool" data-act="bills" data-tab="paid">${icon('print', 20)}<span>Today's orders</span></button>
     </div>
-    <div class="cats" id="cats" role="tablist" aria-label="Menu categories"></div>
     <div class="grid" id="grid"></div>
-  </div>
-  <aside class="ticket" aria-label="Current order">
-    <div class="ticket-head" id="thead"></div>
-    <div class="lines" id="lines"></div>
-    <div class="totals" id="totals"></div>
-  </aside>`;
-  renderCats(); renderGrid(); renderThead(); renderLines(); renderTotals(); renderBillsBadge();
+  </section>
+  <aside class="sum-panel" aria-label="Order summary" id="summary"></aside>`;
+  renderCats(); renderGrid(); renderSummary(); renderBillsBadge();
   if (S.billsOpen) renderDrawer();
 }
-function renderBillsBadge() { const b = $('#bills-badge'); if (b) b.textContent = unpaidBills().length; }
+function renderBillsBadge() { const b = $('#bills-badge'); if (b) { const n = unpaidBills().length; b.textContent = n; b.classList.toggle('zero', !n); } }
 
 function renderCats() {
   const el = $('#cats'); if (!el) return;
-  el.innerHTML = S.menu.categories.map((c) =>
-    `<button type="button" role="tab" aria-selected="${!S.q && S.cat === c.id}" class="pill ${!S.q && S.cat === c.id ? 'on' : ''}" data-act="cat" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('');
+  el.innerHTML = S.menu.categories.map((c) => {
+    const on = !S.q && S.cat === c.id;
+    return `<button type="button" class="${on ? 'on' : ''}" aria-pressed="${on}" data-act="cat" data-id="${esc(c.id)}"><span>${esc(c.label)}</span><small>${itemsIn(c.id).length}</small></button>`;
+  }).join('');
 }
 function renderGrid() {
   const el = $('#grid'); if (!el) return;
   const items = visibleItems();
-  el.innerHTML = items.length ? items.map((i) => `
-    <div class="card">
-      <b>${esc(i.name)}</b>
-      ${i.note ? `<div class="note">${esc(i.note)}</div>` : ''}
-      <div class="opts">${i.options.map((o, idx) =>
-        `<button type="button" class="opt" data-act="add" data-id="${esc(i.id)}" data-o="${idx}" aria-label="Add ${esc(i.name)}${o.k ? ' ' + esc(o.k) : ''}">${o.k ? esc(o.k) + ' · ' + num(o.p) : '+ ' + fmt(o.p)}</button>`).join('')}</div>
-    </div>`).join('') : '<div class="empty">No items match.</div>';
+  const inCart = (id) => S.cart.filter((l) => l.id === id).reduce((a, l) => a + l.qty, 0);
+  el.innerHTML = items.length ? items.map((i) => {
+    const n = inCart(i.id);
+    const qty = n ? `<span class="in-cart" aria-label="${n} in order">${n}</span>` : '';
+    if (i.options.length === 1 && !i.options[0].k) {
+      return `<button type="button" class="icard single" data-act="add" data-id="${esc(i.id)}" data-o="0">${qty}
+        <span class="nm">${esc(i.name)}</span>${i.note ? `<span class="nt">${esc(i.note)}</span>` : ''}
+        <span class="pr">${fmt(i.options[0].p)}</span></button>`;
+    }
+    return `<div class="icard">${qty}<span class="nm">${esc(i.name)}</span>${i.note ? `<span class="nt">${esc(i.note)}</span>` : ''}
+      <div class="sizes">${i.options.map((o, idx) => `<button type="button" data-act="add" data-id="${esc(i.id)}" data-o="${idx}" aria-label="Add ${esc(i.name)} ${esc(o.k)}"><b>${esc(o.k)}</b>${num(o.p)}</button>`).join('')}</div></div>`;
+  }).join('') : '<div class="empty">No items match.</div>';
 }
 
-function renderThead() {
-  const el = $('#thead'); if (!el) return;
-  const count = S.cart.reduce((s, l) => s + l.qty, 0);
+// ----- order summary (right panel) -----
+function renderSummary() {
+  const el = $('#summary'); if (!el) return;
+  const bill = computeBill(S.cart, ctxNow('Cash'));
+  const count = S.cart.reduce((a, l) => a + l.qty, 0);
   const types = [['dine', 'Dine-in'], ['take', 'Takeaway'], ['deliv', 'Delivery']];
-  el.innerHTML = `
-    <div class="row"><b style="font-size:18px">New order</b><span class="grow"></span><span class="muted small">${count} item${count === 1 ? '' : 's'}</span></div>
-    <div class="seg" role="group" aria-label="Order type">${types.map(([v, l]) =>
-      `<button type="button" class="${S.type === v ? 'on' : ''}" aria-pressed="${S.type === v}" data-act="type" data-v="${v}">${l}</button>`).join('')}</div>
-    ${S.type === 'dine' ? `<div class="tables" role="group" aria-label="Table">${(S.settings.tables || []).map((t) =>
-      `<button type="button" class="${S.table === t ? 'on' : ''}" aria-pressed="${S.table === t}" data-act="table" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
-    <label class="field">Customer phone (for loyalty${S.type === 'deliv' ? ' &amp; delivery' : ''})
-      <input data-bind="phone" type="tel" inputmode="tel" placeholder="03xx xxxxxxx" value="${esc(S.phone)}" autocomplete="off"></label>
-    <div id="guest"></div>
-    ${S.type !== 'dine' ? `<label class="field">Customer name<input data-bind="custName" value="${esc(S.custName)}" autocomplete="off"></label>` : ''}
-    ${S.type === 'deliv' ? `<label class="field">Delivery address<input data-bind="address" value="${esc(S.address)}" placeholder="House, street, area" autocomplete="off"></label>` : ''}
-    <label class="field">Kitchen note<input data-bind="notes" value="${esc(S.notes)}" placeholder="e.g. no onions, extra spicy" autocomplete="off"></label>`;
-  renderGuest();
-}
-function renderGuest() {
-  const el = $('#guest'); if (!el) return;
-  const p = cleanPhone(S.phone);
-  const req = Number(S.settings.loyalty_stamps) || 5;
-  if (!phoneOk(p)) { el.innerHTML = ''; return; }
   const c = S.customer;
-  if (!c) { el.innerHTML = '<div class="guest new">New customer — this order starts their loyalty card.</div>'; return; }
-  const st = c.stamps || 0;
-  const dots = Array.from({ length: req }, (_, i) => `<i class="${i < st ? 'on' : ''}"></i>`).join('');
-  el.innerHTML = `<div class="guest"><div class="stamps" aria-hidden="true">${dots}</div>
-    <div>${esc(c.name || 'Returning guest')} · ${st} of ${req} stamps<br>
-    <span style="color:var(--gold)">${rewardReady(c, req) ? `Reward ready — tap “Loyalty ${S.settings.loyalty_discount_pct}%”` : `${req - st} more paid visit${req - st === 1 ? '' : 's'} to ${S.settings.loyalty_discount_pct}% off`}</span></div></div>`;
-}
-
-function renderLines() {
-  const el = $('#lines'); if (!el) return;
-  el.innerHTML = S.cart.length ? S.cart.map((l) => `
-    <div class="line">
-      <div class="grow"><div class="nm">${esc(l.name)}</div><div class="muted small">${fmt(l.price)} each</div></div>
-      <div class="qty">
-        <button type="button" data-act="qty" data-k="${esc(l.key)}" data-d="-1" aria-label="One less ${esc(l.name)}">−</button>
-        <span>${l.qty}</span>
-        <button type="button" data-act="qty" data-k="${esc(l.key)}" data-d="1" aria-label="One more ${esc(l.name)}">+</button>
-      </div>
-      <div class="amt">${fmt(l.price * l.qty)}</div>
-    </div>`).join('') : '<div class="empty">Tap menu items to start an order</div>';
-}
-
-function renderTotals() {
-  const el = $('#totals'); if (!el) return;
-  const t = cartTotals();
-  const req = Number(S.settings.loyalty_stamps) || 5;
-  const canLoyal = rewardReady(S.customer, req) && phoneOk(cleanPhone(S.phone));
-  if (S.disc === 'loyal' && !canLoyal) S.disc = 'none';
-  const reward = bmsmReward(t.subtotal, S.settings.bmsm);
-  const discs = [['none', 'No discount', true], ['ten', '10%', true], ['loyal', `Loyalty ${S.settings.loyalty_discount_pct}%`, canLoyal]];
+  const p = cleanPhone(S.phone);
+  const custChip = phoneOk(p) || S.custName
+    ? `${icon('user', 16)}<span>${esc(S.custName || c?.name || p)}</span>${c ? `<em>${c.stamps || 0}/${req()}${rewardReady(c, req()) ? ' ★' : ''}</em>` : ''}`
+    : `${icon('user', 16)}<span>${S.type === 'deliv' ? 'Add customer *' : 'Customer'}</span>`;
+  const reward = bmsmReward(bill.subtotal, S.settings.bmsm);
+  const servicePct = Number(S.settings.service_pct) || 0;
+  const taxCash = Number(S.settings.tax_cash_pct) || 0, taxDig = Number(S.settings.tax_digital_pct) || 0;
   el.innerHTML = `
-    <div class="discs" role="group" aria-label="Discount">${discs.map(([v, l, ok]) =>
-      `<button type="button" class="${S.disc === v ? 'on' : ''}" aria-pressed="${S.disc === v}" data-act="disc" data-v="${v}" ${ok ? '' : 'disabled'}>${l}</button>`).join('')}</div>
-    <div>
-      <div class="sum"><span>Subtotal</span><span>${fmt(t.subtotal)}</span></div>
-      ${t.discount ? `<div class="sum"><span>Discount</span><span>− ${fmt(t.discount)}</span></div>` : ''}
-      <div class="sum"><span>Tax (${Number(S.settings.tax_pct) || 0}%)</span><span>${fmt(t.tax)}</span></div>
-      ${S.type === 'deliv' ? `<div class="sum"><span>Delivery fee</span><span>${fmt(t.fee)}</span></div>` : ''}
-      <div class="sum total"><span>Total</span><span>${fmt(t.total)}</span></div>
+    <div class="sp-head">
+      <div class="row">
+        ${S.editing ? `<h2>Editing #${S.editing.id}</h2><button type="button" class="btn btn-sm" data-act="cancelEdit">Stop editing</button>`
+          : `<h2>Order summary</h2><span class="muted small">${count} item${count === 1 ? '' : 's'}</span>`}
+        <span class="grow"></span>
+        <button type="button" class="icon-btn" data-act="clearCart" aria-label="Clear order" ${S.cart.length || S.editing ? '' : 'disabled'}>${icon('trash', 20)}</button>
+      </div>
+      <div class="seg" role="group" aria-label="Order type">${types.map(([v, l]) =>
+        `<button type="button" class="${S.type === v ? 'on' : ''}" aria-pressed="${S.type === v}" data-act="type" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="chips-row">
+        ${S.type === 'dine' ? `<button type="button" class="chip ${S.table ? 'set' : 'need'}" data-act="details" data-focus="table">${icon('table', 16)}<span>${S.table ? 'Table ' + esc(S.table) : 'Pick table *'}</span></button>` : ''}
+        <button type="button" class="chip ${phoneOk(p) || S.custName ? 'set' : S.type === 'deliv' ? 'need' : ''}" data-act="details" data-focus="phone">${custChip}</button>
+        <button type="button" class="chip ${S.notes ? 'set' : ''}" data-act="details" data-focus="notes">${icon('note', 16)}<span>${S.notes ? 'Note ✓' : 'Note'}</span></button>
+      </div>
+      ${loyaltyAvailable() && S.discount?.reason !== 'Loyalty reward' ? `<button type="button" class="loyal-banner" data-act="applyLoyalty">${icon('star', 18)}<span><b>Loyalty reward ready</b> — tap to give ${loyalPct()}% off</span></button>` : ''}
     </div>
-    ${reward ? `<div class="reward">Buy More, Save More: ${esc(reward)} — add it to the order at Rs 0</div>` : ''}
-    <div class="pays" role="group" aria-label="Payment method">${PAY_METHODS.map((p) =>
-      `<button type="button" class="${S.pay === p ? 'on' : ''}" aria-pressed="${S.pay === p}" data-act="pay" data-v="${p}">${p}</button>`).join('')}</div>
-    <div class="go">
-      <button type="button" class="btn grow" data-act="place" data-paid="0" ${S.cart.length && !S.busy ? '' : 'disabled'}>${S.type === 'deliv' ? 'Send · cash on delivery' : 'Send · pay later'}</button>
-      <button type="button" class="btn btn-primary grow" style="flex:1.5" data-act="place" data-paid="1" ${S.cart.length && !S.busy ? '' : 'disabled'}>Charge ${fmt(t.total)}</button>
+
+    <div class="sp-lines" id="lines">
+      ${S.cart.length ? S.cart.map((l, idx) => {
+        const ld = S.discount?.scope === 'items' ? lineDiscount(l) : 0;
+        return `<div class="ln">
+          <button type="button" class="ln-main" data-act="editLine" data-i="${idx}">
+            <span class="ln-name">${esc(l.name)}${l.sentQty ? ` <em class="tag">${l.qty > l.sentQty ? '+' + (l.qty - l.sentQty) + ' new' : 'sent'}</em>` : ''}</span>
+            <span class="ln-sub">${fmt(l.price)} each${l.note ? ` · <b>${esc(l.note)}</b>` : ''}${ld ? ` · <span class="ok-text">−${fmt(ld)}</span>` : ''}</span>
+          </button>
+          <div class="qty">
+            <button type="button" data-act="qty" data-i="${idx}" data-d="-1" aria-label="One less ${esc(l.name)}">−</button>
+            <span>${l.qty}</span>
+            <button type="button" data-act="qty" data-i="${idx}" data-d="1" aria-label="One more ${esc(l.name)}">+</button>
+          </div>
+          <div class="ln-amt">${fmt(l.price * l.qty - ld)}</div>
+        </div>`;
+      }).join('') : `<div class="empty-cart">${icon('order', 36)}<b>No items yet</b><span>Tap items on the left to start the order</span></div>`}
+    </div>
+
+    <div class="sp-foot">
+      <div class="adj">
+        <button type="button" class="adj-btn ${S.discount ? 'on' : ''}" data-act="discount" ${S.cart.length ? '' : 'disabled'}>${icon('percent', 18)}<span>${S.discount ? `Discount <b>${esc(discountText(S.discount))}</b>` : 'Discount'}</span></button>
+        ${S.type === 'dine' && servicePct ? `<button type="button" class="adj-btn ${S.serviceOn ? 'on' : ''}" data-act="toggleService" aria-pressed="${S.serviceOn}"><span>Service ${num(servicePct)}%</span><b>${S.serviceOn ? 'ON' : 'OFF'}</b></button>` : ''}
+        ${S.type === 'deliv' ? `<button type="button" class="adj-btn" data-act="details" data-focus="fee"><span>Delivery fee</span><b>${fmt(deliveryFee())}</b></button>` : ''}
+      </div>
+      <dl class="tot">
+        <div><dt>Subtotal</dt><dd>${fmt(bill.subtotal)}</dd></div>
+        ${bill.discount ? `<div class="ok-text"><dt>Discount${S.discount?.reason ? ' · ' + esc(discountLabel(S.discount)) : ''}</dt><dd>− ${fmt(bill.discount)}</dd></div>` : ''}
+        ${bill.service ? `<div><dt>Service charge ${num(bill.servicePct)}%</dt><dd>${fmt(bill.service)}</dd></div>` : ''}
+        ${taxCash || taxDig ? `<div><dt>${bill.inclusive ? 'Incl. tax' : 'Tax'} ${num(taxCash)}% cash${taxDig !== taxCash ? ` · ${num(taxDig)}% card` : ''}</dt><dd>${fmt(bill.tax)}</dd></div>` : ''}
+        ${bill.fee ? `<div><dt>Delivery fee</dt><dd>${fmt(bill.fee)}</dd></div>` : ''}
+        ${bill.roundOff ? `<div><dt>Round off</dt><dd>${bill.roundOff > 0 ? '+' : '−'} ${fmt(Math.abs(bill.roundOff))}</dd></div>` : ''}
+        <div class="grand"><dt>Total</dt><dd>${fmt(bill.total)}</dd></div>
+      </dl>
+      ${reward ? `<div class="reward">${icon('star', 16)} Buy More, Save More: <b>${esc(reward)}</b></div>` : ''}
+      <div class="go">
+        <button type="button" class="btn btn-dark btn-lg" data-act="saveOrder" ${S.cart.length && !S.busy ? '' : 'disabled'}>${S.editing ? 'Update order' : 'Save order'}<small>${S.type === 'deliv' ? 'cash on delivery' : 'send to kitchen · pay later'}</small></button>
+        <button type="button" class="btn btn-primary btn-lg" data-act="payNow" ${S.cart.length && !S.busy ? '' : 'disabled'}>Pay ${fmt(bill.total)}<small>${S.editing ? 'update & take payment' : 'take payment now'}</small></button>
+      </div>
     </div>`;
 }
 
@@ -378,81 +412,350 @@ function addToCart(itemId, optIdx) {
   const i = S.menu.items.find((x) => x.id === itemId);
   const o = i?.options[optIdx];
   if (!o) return;
-  const key = i.id + '|' + o.k;
-  const line = S.cart.find((l) => l.key === key);
+  const name = i.name + (o.k ? ` (${o.k})` : '');
+  const line = S.cart.find((l) => l.id === i.id && l.name === name && !l.note && !l.disc);
   if (line) line.qty++;
-  else S.cart.push({ key, id: i.id, name: i.name + (o.k ? ` (${o.k})` : ''), price: Number(o.p), qty: 1, station: i.station, counts: i.counts || null });
-  renderLines(); renderTotals(); renderThead();
+  else S.cart.push({ id: i.id, name, price: Number(o.p), qty: 1, station: i.station, counts: i.counts || null, note: '' });
+  renderSummary(); renderGrid();
+  const lines = $('#lines'); if (lines) lines.scrollTop = lines.scrollHeight;
 }
 
+function validateOrder() {
+  const p = cleanPhone(S.phone);
+  if (!S.cart.length) return 'Add items first';
+  if (S.type === 'dine' && !S.table) return 'Pick a table';
+  if (S.phone && !phoneOk(p)) return 'Phone should be 11 digits, like 03001234567';
+  if (S.type === 'deliv' && !phoneOk(p)) return 'Delivery needs the customer’s phone';
+  if (S.type === 'deliv' && !S.address.trim()) return 'Add the delivery address';
+  if (S.discount?.reason === 'Loyalty reward' && !loyaltyAvailable()) return 'This customer’s loyalty card isn’t full yet';
+  return '';
+}
+function needsDetails(msg) { toast(msg, { err: true }); if (/table|phone|address|loyalty/i.test(msg)) openDetails(/table/i.test(msg) ? 'table' : /address/i.test(msg) ? 'address' : 'phone'); }
+
+// Build the order row from the current screen.
+function orderFromState(method, paid, payExtra = {}) {
+  const bill = computeBill(S.cart, ctxNow(method || 'Cash'));
+  const p = cleanPhone(S.phone);
+  const prev = S.editing;
+  const items = S.cart.map((l) => {
+    const added = l.sentQty ? Math.max(0, l.qty - l.sentQty) : 0;
+    return { id: l.id, name: l.name, price: l.price, qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, added };
+  });
+  const anyAdded = items.some((i) => i.added > 0) || (prev && items.some((i) => !prev.items.find((x) => x.name === i.name)));
+  return {
+    type: S.type, table_no: S.type === 'dine' ? S.table : '',
+    customer_phone: phoneOk(p) ? p : '', customer_name: S.custName.trim() || S.customer?.name || '',
+    address: S.type === 'deliv' ? S.address.trim() : '', items, notes: S.notes.trim(),
+    subtotal: bill.subtotal, discount: bill.discount, discount_label: discountLabel(S.discount),
+    service_charge: bill.service, tax: bill.tax, tax_rate: bill.taxRate, delivery_fee: bill.fee, round_off: bill.roundOff, total: bill.total,
+    payment: paid ? method : (S.type === 'deliv' ? 'Cash (COD)' : ''), paid,
+    status: prev ? (anyAdded && prev.status !== 'new' ? 'new' : prev.status) : 'new',
+    reward: bmsmReward(bill.subtotal, S.settings.bmsm),
+    meta: { discount: S.discount, serviceOn: S.serviceOn, inclusive: bill.inclusive, by: S.me.profile.name },
+    ...payExtra
+  };
+}
+
+async function saveOrder(method = null, payExtra = {}) {
+  if (S.busy) return null;
+  const problem = validateOrder();
+  if (problem) { needsDetails(problem); return null; }
+  const paid = !!method;
+  const data = orderFromState(method, paid, payExtra);
+  S.busy = true; renderSummary();
+  const row = await run(async () => {
+    let r;
+    if (S.editing) r = await api.updateOrder(S.editing.id, data);
+    else r = await api.createOrder({ ...data, created_by: LIVE ? S.me.user.id : null });
+    if (r.customer_phone) await saveCustomerAfter(r, paid);
+    resetOrder();
+    await refreshOrders();
+    return r;
+  });
+  S.busy = false;
+  if (S.route === 'order') renderOrder($('#screen'));
+  return row || null;
+}
+function resetOrder() {
+  Object.assign(S, { cart: [], table: '', phone: '', custName: '', address: '', notes: '', discount: null, customer: null, editing: null, feeOverride: null, q: '' });
+  S.serviceOn = S.settings.service_default_on !== false;
+}
+function loadForEdit(o) {
+  Object.assign(S, {
+    editing: o, type: o.type, table: o.table_no, phone: o.customer_phone, custName: o.customer_name, address: o.address, notes: o.notes,
+    discount: ctxForOrder(o, 'Cash').discount, serviceOn: o.meta?.serviceOn ?? Number(o.service_charge) > 0,
+    feeOverride: o.type === 'deliv' ? Number(o.delivery_fee) : null, customer: null,
+    cart: o.items.map((l) => ({ id: l.id, name: l.name, price: Number(l.price), qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, sentQty: l.qty }))
+  });
+  if (phoneOk(o.customer_phone)) api.getCustomer(o.customer_phone).then((c) => { S.customer = c; renderSummary(); }).catch(() => {});
+}
+
+// Creates/updates the customer card; gives a stamp when paid.
+async function saveCustomerAfter(order, paid) {
+  let c = (await api.getCustomer(order.customer_phone)) || { phone: order.customer_phone, stamps: 0, visits: 0, total_spent: 0, rewards_used: 0 };
+  if (order.customer_name) c.name = order.customer_name;
+  if (order.address) c.address = order.address;
+  if (paid) c = loyaltyAfterPayment(c, order, req());
+  await api.saveCustomer(c);
+}
+
+// Pay an order that's already saved (open bill / delivery).
+async function payExisting(o, method, extra = {}) {
+  const bill = computeBill(o.items, ctxForOrder(o, method));
+  const patch = {
+    paid: true, payment: method, subtotal: bill.subtotal, discount: bill.discount, service_charge: bill.service,
+    tax: bill.tax, tax_rate: bill.taxRate, delivery_fee: bill.fee, round_off: bill.roundOff, total: bill.total, ...extra
+  };
+  if (o.type === 'deliv' && o.status === 'out') patch.status = 'done';
+  const r = await api.updateOrder(o.id, patch);
+  if (r.customer_phone) await saveCustomerAfter(r, true);
+  await refreshOrders();
+  return r;
+}
+
+// ----- Order details pop-up: table, customer, note, delivery fee -----
+function openDetails(focus = 'phone') {
+  S.m = { kind: 'details', focus };
+  renderDetails();
+  setTimeout(() => { const f = $(`#dlg [data-mf="${focus}"]`); f?.focus?.(); }, 30);
+}
+function renderDetails() {
+  const busyTables = new Map(S.open.filter((o) => o.type === 'dine' && o.status !== 'cancelled' && (!o.paid || o.status !== 'done') && (!S.editing || o.id !== S.editing.id)).map((o) => [o.table_no, o.id]));
+  openModal('md', `
+    ${modalHead('Order details', TYPE_LABEL[S.type])}
+    <div class="mb stack">
+      ${S.type === 'dine' ? `<div><div class="lbl">Table</div><div class="table-grid" role="group" aria-label="Table">${(S.settings.tables || []).map((t) => {
+        const busy = busyTables.get(t);
+        return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${t === (S.settings.tables || [])[0] ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
+      }).join('')}</div><div class="muted small">Tables with a number already have an open bill.</div></div>` : ''}
+      <label class="field">Customer phone ${S.type === 'deliv' ? '*' : '(for loyalty)'}<input data-mf="phone" data-bind="phone" type="tel" inputmode="tel" placeholder="03xx xxxxxxx" value="${esc(S.phone)}" autocomplete="off"></label>
+      <div id="guest">${guestHtml()}</div>
+      <label class="field">Customer name<input data-mf="name" data-bind="custName" value="${esc(S.custName)}" autocomplete="off"></label>
+      ${S.type === 'deliv' ? `<label class="field">Delivery address *<input data-mf="address" data-bind="address" value="${esc(S.address)}" placeholder="House, street, area" autocomplete="off"></label>
+        <label class="field">Delivery fee (Rs)<input data-mf="fee" data-bind="feeOverride" type="number" min="0" step="10" value="${deliveryFee()}"></label>` : ''}
+      <label class="field">Order note for kitchen<input data-mf="notes" data-bind="notes" value="${esc(S.notes)}" placeholder="e.g. birthday — bring candle with dessert" autocomplete="off"></label>
+    </div>
+    <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-primary btn-lg" data-act="closeModal">Done</button></footer>`);
+}
+function guestHtml() {
+  const p = cleanPhone(S.phone);
+  if (!phoneOk(p)) return '';
+  const c = S.customer;
+  if (!c) return '<div class="guest new">New customer — this order starts their loyalty card.</div>';
+  const st = c.stamps || 0;
+  return `<div class="guest"><div class="stamps" aria-hidden="true">${Array.from({ length: req() }, (_, i) => `<i class="${i < st ? 'on' : ''}"></i>`).join('')}</div>
+    <div><b>${esc(c.name || 'Returning guest')}</b> · ${st} of ${req()} stamps · ${c.visits || 0} visits<br>
+    <span style="color:var(--gold)">${rewardReady(c, req()) ? `Reward ready — ${loyalPct()}% off this order` : `${req() - st} more paid visit${req() - st === 1 ? '' : 's'} to ${loyalPct()}% off`}</span>${c.notes ? `<br>Note: ${esc(c.notes)}` : ''}</div></div>`;
+}
 let phoneTimer = null;
 function onPhoneInput() {
   const p = cleanPhone(S.phone);
   clearTimeout(phoneTimer);
-  if (!phoneOk(p)) { S.customer = null; renderGuest(); renderTotals(); return; }
+  if (!phoneOk(p)) { S.customer = null; const g = $('#guest'); if (g) g.innerHTML = ''; return; }
   phoneTimer = setTimeout(() => run(async () => {
     S.customer = await api.getCustomer(p);
     if (S.customer) {
       const n = $('[data-bind=custName]'); if (n && !n.value && S.customer.name) { n.value = S.customer.name; S.custName = S.customer.name; }
       const a = $('[data-bind=address]'); if (a && !a.value && S.customer.address) { a.value = S.customer.address; S.address = S.customer.address; }
     }
-    renderGuest(); renderTotals();
+    const g = $('#guest'); if (g) g.innerHTML = guestHtml();
   }), 250);
 }
 
-async function placeOrder(payNow) {
-  if (S.busy) return;
-  const p = cleanPhone(S.phone);
-  if (!S.cart.length) return toast('Add items first', { err: true });
-  if (S.type === 'dine' && !S.table) return toast('Pick a table', { err: true });
-  if (S.phone && !phoneOk(p)) return toast('Phone should be 11 digits, like 03001234567', { err: true });
-  if (S.type === 'deliv' && !phoneOk(p)) return toast('Delivery needs the customer’s phone', { err: true });
-  if (S.type === 'deliv' && !S.address.trim()) return toast('Add the delivery address', { err: true });
-  const t = cartTotals();
-  const order = {
-    created_by: LIVE ? S.me.user.id : null,
-    type: S.type, table_no: S.type === 'dine' ? S.table : '',
-    customer_phone: phoneOk(p) ? p : '', customer_name: S.custName.trim() || S.customer?.name || '', address: S.type === 'deliv' ? S.address.trim() : '',
-    items: S.cart.map(({ id, name, price, qty, station, counts }) => ({ id, name, price, qty, station, counts })),
-    notes: S.notes.trim(), subtotal: t.subtotal, discount: t.discount,
-    discount_label: S.disc === 'loyal' ? 'Loyalty' : S.disc === 'ten' ? '10%' : '',
-    tax: t.tax, delivery_fee: t.fee, total: t.total,
-    payment: payNow ? S.pay : (S.type === 'deliv' ? 'Cash (COD)' : ''), paid: payNow, status: 'new',
-    reward: bmsmReward(t.subtotal, S.settings.bmsm)
+// ----- Line pop-up: quantity, item note, remove -----
+function openLine(idx) {
+  const l = S.cart[idx]; if (!l) return;
+  S.m = { kind: 'line', idx, qty: l.qty, note: l.note || '' };
+  renderLineModal();
+}
+function renderLineModal() {
+  const m = S.m, l = S.cart[m.idx];
+  openModal('sm', `
+    ${modalHead(esc(l.name), fmt(l.price) + ' each')}
+    <div class="mb stack">
+      <div class="row" style="justify-content:center;gap:16px">
+        <button type="button" class="qty-big" data-act="lineQty" data-d="-1" aria-label="One less">−</button>
+        <b style="font-size:32px;min-width:48px;text-align:center" aria-live="polite">${m.qty}</b>
+        <button type="button" class="qty-big" data-act="lineQty" data-d="1" aria-label="One more">+</button>
+      </div>
+      <label class="field">Note for this item<input data-m="note" value="${esc(m.note)}" placeholder="e.g. no onions" autocomplete="off"></label>
+      <div class="chips">${NOTE_CHIPS.map((n) => `<button type="button" class="chip-sm" data-act="lineNote" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+    </div>
+    <footer class="mf"><button type="button" class="btn btn-danger" data-act="lineRemove">${icon('trash', 18)} Remove item</button><span class="grow"></span>
+      <button type="button" class="btn btn-primary btn-lg" data-act="lineSave">Save · ${fmt(l.price * m.qty)}</button></footer>`);
+}
+
+// ----- Discount pop-up -----
+function openDiscount() {
+  const d = S.discount || {};
+  S.m = {
+    kind: 'discount', scope: d.scope || 'bill', type: d.type || 'pct', value: d.scope === 'bill' ? (d.value ?? '') : '',
+    reason: d.reason || '', bank: d.bank || '', custom: d.reason && !S.settings.discount_reasons.includes(d.reason) && d.reason !== 'Loyalty reward' ? d.reason : '',
+    lines: S.cart.map((l) => ({ type: l.disc?.type || 'pct', value: l.disc?.value ?? '' }))
   };
-  S.busy = true; renderTotals();
-  await run(async () => {
-    const row = await api.createOrder(order);
-    if (row.customer_phone) await saveCustomerAfter(row, payNow);
-    Object.assign(S, { cart: [], table: '', phone: '', custName: '', address: '', notes: '', disc: 'none', customer: null, q: '' });
-    await refreshOrders();
-    S.busy = false;
-    renderOrder($('#screen'));
-    toast(payNow ? `Order #${row.id} paid · ${fmt(row.total)}` : `Order #${row.id} sent to kitchen`,
-      { action: { label: payNow ? 'Print receipt' : 'Print bill', fn: () => printReceipt(row) } });
+  renderDiscount();
+}
+function draftDiscount() {
+  const m = S.m;
+  const reason = m.custom.trim() || m.reason;
+  if (m.scope === 'bill') return Number(m.value) > 0 ? { scope: 'bill', type: m.type, value: Number(m.value), reason, bank: m.reason === 'Bank / card offer' ? m.bank : '' } : null;
+  const any = m.lines.some((x) => Number(x.value) > 0);
+  return any ? { scope: 'items', type: 'pct', value: 0, reason, bank: m.reason === 'Bank / card offer' ? m.bank : '' } : null;
+}
+function draftLines() {
+  const m = S.m;
+  return S.cart.map((l, i) => ({ ...l, disc: m.scope === 'items' && Number(m.lines[i].value) > 0 ? { type: m.lines[i].type, value: Number(m.lines[i].value) } : null }));
+}
+function discountPreview() {
+  const d = draftDiscount();
+  const before = computeBill(S.cart, { ...ctxNow('Cash'), discount: null });
+  const after = computeBill(draftLines(), { ...ctxNow('Cash'), discount: d });
+  const share = discountShare(after);
+  const cap = Number(S.settings.cashier_max_discount_pct) || 0;
+  const over = !isOwner() && d && d.reason !== 'Loyalty reward' && cap > 0 && share > cap + 0.01;
+  return { before, after, share, over, cap, d };
+}
+function renderDiscount() {
+  const m = S.m, s = S.settings;
+  const v = discountPreview();
+  const reasons = s.discount_reasons || [];
+  openModal('lg', `
+    ${modalHead('Discount', 'Choose how much, then why')}
+    <div class="mb disc">
+      <div class="disc-left stack">
+        ${loyaltyAvailable() ? `<button type="button" class="loyal-banner" data-act="applyLoyalty">${icon('star', 18)}<span><b>Loyalty reward ready</b> — ${esc(S.customer.name || 'this customer')} has a full card. Apply ${loyalPct()}% off</span></button>` : ''}
+        <div class="seg" role="group" aria-label="Discount on">
+          <button type="button" class="${m.scope === 'bill' ? 'on' : ''}" data-act="dScope" data-v="bill">Whole bill</button>
+          <button type="button" class="${m.scope === 'items' ? 'on' : ''}" data-act="dScope" data-v="items">Item-wise</button>
+        </div>
+        ${m.scope === 'bill' ? `
+          <div class="seg" role="group" aria-label="Discount type">
+            <button type="button" class="${m.type === 'pct' ? 'on' : ''}" data-act="dType" data-v="pct">Percentage %</button>
+            <button type="button" class="${m.type === 'amt' ? 'on' : ''}" data-act="dType" data-v="amt">Fixed amount Rs</button>
+          </div>
+          <div class="chips">${(m.type === 'pct' ? (s.quick_discounts || []) : [50, 100, 200, 300, 500, 1000]).map((q) =>
+            `<button type="button" class="chip-lg ${Number(m.value) === Number(q) ? 'on' : ''}" data-act="dQuick" data-v="${q}">${m.type === 'pct' ? q + '%' : 'Rs ' + num(q)}</button>`).join('')}</div>
+          <label class="field">${m.type === 'pct' ? 'Custom percentage' : 'Custom amount (Rs)'}<input data-m="value" type="number" min="0" ${m.type === 'pct' ? 'max="100"' : ''} step="1" value="${esc(m.value)}" inputmode="decimal"></label>`
+        : `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Item</th><th class="num">Amount</th><th>Type</th><th>Value</th><th class="num">Off</th></tr></thead><tbody>
+            ${S.cart.map((l, i) => {
+              const ln = m.lines[i];
+              const off = lineDiscount({ ...l, disc: Number(ln.value) > 0 ? { type: ln.type, value: Number(ln.value) } : null });
+              return `<tr><td>${l.qty}× ${esc(l.name)}</td><td class="num">${fmt(l.price * l.qty)}</td>
+                <td><div class="seg mini"><button type="button" class="${ln.type === 'pct' ? 'on' : ''}" data-act="dLineType" data-i="${i}" data-v="pct">%</button><button type="button" class="${ln.type === 'amt' ? 'on' : ''}" data-act="dLineType" data-i="${i}" data-v="amt">Rs</button></div></td>
+                <td><input class="input" style="width:90px" data-ml="${i}" type="number" min="0" value="${esc(ln.value)}" aria-label="Discount for ${esc(l.name)}" inputmode="decimal"></td>
+                <td class="num ok-text" id="off-${i}">${off ? '−' + fmt(off) : '—'}</td></tr>`;
+            }).join('')}</tbody></table></div>`}
+        <div>
+          <div class="lbl">Reason</div>
+          <div class="chips">${reasons.map((r) => `<button type="button" class="chip-sm ${m.reason === r && !m.custom ? 'on' : ''}" data-act="dReason" data-v="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+          ${m.reason === 'Bank / card offer' && !m.custom ? `<div class="chips" style="margin-top:8px">${(s.banks || []).map((b) => `<button type="button" class="chip-sm ${m.bank === b ? 'on' : ''}" data-act="dBank" data-v="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
+          <label class="field" style="margin-top:10px">Or type a reason<input data-m="custom" value="${esc(m.custom)}" placeholder="e.g. birthday" autocomplete="off"></label>
+        </div>
+      </div>
+      <aside class="disc-right" id="disc-preview">${discPreviewHtml(v)}</aside>
+    </div>
+    <footer class="mf">
+      ${S.discount ? '<button type="button" class="btn btn-danger" data-act="dRemove">Remove discount</button>' : ''}
+      <span class="grow"></span>
+      <button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
+      <button type="button" class="btn btn-primary btn-lg" data-act="dApply" id="d-apply" ${v.d && !v.over ? '' : 'disabled'}>Apply discount</button>
+    </footer>`);
+}
+function discPreviewHtml(v) {
+  return `<div class="lbl">Preview</div>
+    <dl class="tot">
+      <div><dt>Subtotal</dt><dd>${fmt(v.after.subtotal)}</dd></div>
+      <div class="ok-text"><dt>Discount${v.after.subtotal ? ` (${v.share.toFixed(v.share % 1 ? 1 : 0)}%)` : ''}</dt><dd>− ${fmt(v.after.discount)}</dd></div>
+      ${v.after.service ? `<div><dt>Service charge</dt><dd>${fmt(v.after.service)}</dd></div>` : ''}
+      ${v.after.tax ? `<div><dt>${v.after.inclusive ? 'Incl. tax' : 'Tax'} (cash)</dt><dd>${fmt(v.after.tax)}</dd></div>` : ''}
+      ${v.after.fee ? `<div><dt>Delivery</dt><dd>${fmt(v.after.fee)}</dd></div>` : ''}
+      <div class="was"><dt>Was</dt><dd><s>${fmt(v.before.total)}</s></dd></div>
+      <div class="grand"><dt>New total</dt><dd>${fmt(v.after.total)}</dd></div>
+    </dl>
+    ${v.over ? `<div class="error">Cashiers can give up to ${v.cap}%. This is ${v.share.toFixed(0)}% — ask the owner.</div>` : ''}
+    ${v.d && !v.d.reason ? '<div class="muted small">Tip: pick a reason so reports show why discounts were given.</div>' : ''}`;
+}
+function refreshDiscountPreview() {
+  const v = discountPreview();
+  const el = $('#disc-preview'); if (el) el.innerHTML = discPreviewHtml(v);
+  const b = $('#d-apply'); if (b) b.disabled = !(v.d && !v.over);
+  S.m.lines.forEach((ln, i) => {
+    const c = $('#off-' + i); if (!c) return;
+    const off = lineDiscount({ ...S.cart[i], disc: Number(ln.value) > 0 ? { type: ln.type, value: Number(ln.value) } : null });
+    c.textContent = off ? '−' + fmt(off) : '—';
   });
-  if (S.busy) { S.busy = false; renderTotals(); }
 }
 
-// Creates/updates the customer card; gives a stamp when paid.
-async function saveCustomerAfter(order, paid) {
-  const req = Number(S.settings.loyalty_stamps) || 5;
-  let c = (await api.getCustomer(order.customer_phone)) || { phone: order.customer_phone, stamps: 0, visits: 0, total_spent: 0, rewards_used: 0 };
-  if (order.customer_name) c.name = order.customer_name;
-  if (order.address) c.address = order.address;
-  if (paid) c = loyaltyAfterPayment(c, order, req);
-  await api.saveCustomer(c);
+// ----- Payment pop-up -----
+function openPayment(target) {
+  // target: null = the order on screen; or an existing order object
+  if (!target) { const problem = validateOrder(); if (problem) return needsDetails(problem); }
+  let pr = true; try { pr = localStorage.getItem('kafeo-print') !== '0'; } catch { pr = true; }
+  S.m = { kind: 'pay', target, method: 'Cash', received: '', print: pr };
+  renderPayment();
 }
-
-async function payBill(id, method) {
-  const before = S.open.find((o) => o.id === id) || await api.getOrder(id);
-  if (!before || before.paid) return;
-  const patch = { paid: true, payment: method };
-  if (before.type === 'deliv' && before.status === 'out') patch.status = 'done';
-  const o = await api.updateOrder(id, patch);
-  if (o.customer_phone) await saveCustomerAfter(o, true);
-  await refreshOrders();
-  return o;
+function payBill() {
+  const m = S.m;
+  return m.target ? computeBill(m.target.items, ctxForOrder(m.target, m.method)) : computeBill(S.cart, ctxNow(m.method));
+}
+function renderPayment() {
+  const m = S.m, s = S.settings;
+  const bill = payBill();
+  const t = m.target;
+  openModal('lg', `
+    ${modalHead(t ? `Take payment · Order #${t.id}` : 'Take payment', t ? (t.type === 'dine' ? 'Table ' + esc(t.table_no) : TYPE_LABEL[t.type]) : (S.type === 'dine' ? 'Table ' + esc(S.table) : TYPE_LABEL[S.type]))}
+    <div class="mb pay">
+      <div class="stack">
+        <div class="lbl">Payment method</div>
+        <div class="methods">${PAY_METHODS.map((pm) => `<button type="button" class="${m.method === pm ? 'on' : ''}" aria-pressed="${m.method === pm}" data-act="pMethod" data-v="${pm}">
+          <b>${pm}</b><small>${taxRateFor(pm, s) ? `Tax ${num(taxRateFor(pm, s))}%` : 'No tax set'}</small></button>`).join('')}</div>
+        ${m.method === 'Cash' ? `
+          <label class="field">Cash received (Rs)<input data-m="received" type="number" min="0" step="10" inputmode="numeric" value="${esc(m.received)}" placeholder="${bill.total}"></label>
+          <div class="chips">${cashSuggestions(bill.total).map((v) => `<button type="button" class="chip-lg ${Number(m.received) === v ? 'on' : ''}" data-act="pCash" data-v="${v}">${v === bill.total ? 'Exact' : 'Rs ' + num(v)}</button>`).join('')}</div>
+          <div class="change" id="change">${changeHtml(bill)}</div>` : `<div class="muted">Confirm the ${esc(m.method)} payment of <b>${fmt(bill.total)}</b> has gone through before completing.</div>`}
+        <label class="check"><input type="checkbox" data-mc="print" ${m.print ? 'checked' : ''}> Print receipt</label>
+      </div>
+      <aside class="disc-right">
+        <div class="lbl">Bill</div>
+        <dl class="tot">
+          <div><dt>Subtotal</dt><dd>${fmt(bill.subtotal)}</dd></div>
+          ${bill.discount ? `<div class="ok-text"><dt>Discount</dt><dd>− ${fmt(bill.discount)}</dd></div>` : ''}
+          ${bill.service ? `<div><dt>Service charge ${num(bill.servicePct)}%</dt><dd>${fmt(bill.service)}</dd></div>` : ''}
+          <div><dt>${bill.inclusive ? 'Incl. tax' : 'Tax'} ${num(bill.taxRate)}% (${isDigital(m.method) ? 'card/digital' : 'cash'})</dt><dd>${fmt(bill.tax)}</dd></div>
+          ${bill.fee ? `<div><dt>Delivery fee</dt><dd>${fmt(bill.fee)}</dd></div>` : ''}
+          ${bill.roundOff ? `<div><dt>Round off</dt><dd>${bill.roundOff > 0 ? '+' : '−'} ${fmt(Math.abs(bill.roundOff))}</dd></div>` : ''}
+          <div class="grand"><dt>To pay</dt><dd>${fmt(bill.total)}</dd></div>
+        </dl>
+        ${Number(s.tax_cash_pct) !== Number(s.tax_digital_pct) ? `<div class="muted small">Tax changes with the payment method (cash ${num(s.tax_cash_pct)}% · card/wallet ${num(s.tax_digital_pct)}%).</div>` : ''}
+      </aside>
+    </div>
+    <footer class="mf"><span class="grow"></span>
+      <button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
+      <button type="button" class="btn btn-primary btn-lg" data-act="pComplete" id="p-go">Complete payment · ${fmt(bill.total)}</button></footer>`);
+}
+function changeHtml(bill) {
+  const r = Number(S.m.received);
+  if (!S.m.received) return `<span>Change to return</span><b>Rs 0</b>`;
+  if (r < bill.total) return `<span class="err-text">Short by</span><b class="err-text">${fmt(bill.total - r)}</b>`;
+  return `<span>Change to return</span><b>${fmt(r - bill.total)}</b>`;
+}
+async function completePayment() {
+  const m = S.m;
+  const bill = payBill();
+  const received = m.method === 'Cash' ? (m.received === '' ? bill.total : Number(m.received)) : bill.total;
+  if (received < bill.total) return toast(`Cash received is less than ${fmt(bill.total)}`, { err: true });
+  const extra = { cash_received: m.method === 'Cash' ? received : 0, change_due: m.method === 'Cash' ? received - bill.total : 0 };
+  try { localStorage.setItem('kafeo-print', m.print ? '1' : '0'); } catch { /* ignore */ }
+  const btn = $('#p-go'); if (btn) btn.disabled = true;
+  const print = m.print, target = m.target;
+  let row;
+  if (target) row = await run(() => payExisting(target, m.method, extra));
+  else row = await saveOrder(m.method, extra);
+  if (!row) { if (btn) btn.disabled = false; return; }
+  closeModal();
+  if (S.route === 'order') { renderBillsBadge(); if (S.billsOpen) renderDrawer(); } else renderScreen();
+  toast(`Order #${row.id} paid by ${row.payment}${row.change_due ? ` · change ${fmt(row.change_due)}` : ''}`, { action: { label: 'Print receipt', fn: () => printReceipt(row) } });
+  if (print) printReceipt(row);
 }
 
 // ---------- open bills drawer ----------
@@ -460,27 +763,33 @@ function renderDrawer() {
   const el = $('#drawer'); if (!el) return;
   if (!S.billsOpen) { el.innerHTML = ''; return; }
   const bills = unpaidBills();
-  const paidToday = S.today.filter((o) => o.paid && o.status !== 'cancelled').slice(0, 15);
+  const paidToday = S.today.filter((o) => o.paid && o.status !== 'cancelled');
   const where = (o) => o.type === 'dine' ? `Table ${esc(o.table_no)}` : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + esc(o.customer_name) : ''}`;
   el.innerHTML = `
   <div class="drawer-bg" data-act="closeBills">
-    <section class="drawer" role="dialog" aria-modal="true" aria-label="Open bills" data-stop="1">
-      <div class="drawer-head"><h2>Open bills (${bills.length})</h2><button type="button" class="btn btn-sm" data-act="closeBills">Close</button></div>
+    <section class="drawer" role="dialog" aria-modal="true" aria-label="Bills" data-stop="1">
+      <div class="drawer-head">
+        <div class="seg" style="flex:1"><button type="button" class="${S.billsTab === 'open' ? 'on' : ''}" data-act="billsTab" data-v="open">Open bills (${bills.length})</button>
+          <button type="button" class="${S.billsTab === 'paid' ? 'on' : ''}" data-act="billsTab" data-v="paid">Paid today (${paidToday.length})</button></div>
+        <button type="button" class="icon-btn" data-act="closeBills" aria-label="Close">${icon('x', 20)}</button>
+      </div>
       <div class="drawer-body">
-        ${bills.length ? bills.map((o) => `
+        ${S.billsTab === 'open' ? (bills.length ? bills.map((o) => `
           <div class="bill">
-            <div class="row"><b style="font-size:17px">#${o.id}</b><span class="tag">${where(o)}</span><span class="tag ${o.status === 'done' ? 'ok' : ''}">${STATUS_LABEL[o.status]}</span><span class="grow"></span><b>${fmt(o.total)}</b></div>
-            <div class="items">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}${o.discount_label ? ` · discount ${esc(o.discount_label)}` : ''}</div>
-            <div class="pays">${PAY_METHODS.map((m) => `<button type="button" data-act="payBill" data-id="${o.id}" data-v="${m}">${m}</button>`).join('')}</div>
-            <div class="row"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Print bill</button>
+            <div class="row"><b style="font-size:18px">#${o.id}</b><span class="tag">${where(o)}</span><span class="tag ${o.status === 'done' ? 'ok' : ''}">${STATUS_LABEL[o.status]}</span><span class="grow"></span><b style="font-size:18px">${fmt(o.total)}</b></div>
+            <div class="items">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}${o.discount_label ? ` · <span class="ok-text">discount ${esc(o.discount_label)}</span>` : ''}</div>
+            <div class="row wrap">
+              <button type="button" class="btn btn-primary" data-act="payOpen" data-id="${o.id}">Take payment</button>
+              <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items / edit</button>
+              <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
               <span class="grow muted small">${minutesSince(o.created_at)} min ago</span>
-              ${isOwner() ? `<button type="button" class="btn btn-sm btn-danger" data-act="cancelOrder" data-id="${o.id}">Cancel order</button>` : ''}</div>
-          </div>`).join('') : '<div class="empty">No unpaid bills.</div>'}
-        <h3 style="margin:8px 0 0">Paid today</h3>
-        ${paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${paidToday.map((o) => `
-          <tr><td>#${o.id}</td><td>${where(o)}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
+              ${isOwner() ? `<button type="button" class="btn btn-sm btn-danger" data-act="cancelOrder" data-id="${o.id}">Cancel</button>` : ''}
+            </div>
+          </div>`).join('') : '<div class="empty">No unpaid bills.</div>')
+        : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Where</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
+          <tr><td>#${o.id}<div class="muted small">${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div></td><td>${where(o)}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
           <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="muted small">Nothing paid yet today.</div>'}
+          : '<div class="empty">Nothing paid yet today.</div>')}
       </div>
     </section>
   </div>`;
@@ -520,7 +829,7 @@ function ticketK(o, items) {
   else btn = `<button type="button" class="btn kbtn-done" data-act="kstatus" data-id="${o.id}" data-v="done">${o.type === 'take' ? 'Picked up' : 'Served'}</button>`;
   return `<article class="ktk ${late ? 'late' : ''}">
     <div class="row"><span class="no">#${o.id}</span><span class="tag dark">${where}</span><span class="age">${age} min</span></div>
-    ${items.map((i) => `<div class="it"><b>${i.qty}×</b><span>${esc(i.name)}</span></div>`).join('')}
+    ${items.map((i) => `<div class="it ${i.added ? 'added' : ''}"><b>${i.qty}×</b><span>${esc(i.name)}${i.added ? ` <em class="tag new">+${i.added} NEW</em>` : ''}${i.note ? `<small>${esc(i.note)}</small>` : ''}</span></div>`).join('')}
     ${o.notes ? `<div class="knote">Note: ${esc(o.notes)}</div>` : ''}
     ${o.reward ? `<div class="knote">Add free: ${esc(o.reward)}</div>` : ''}
     ${btn}
@@ -544,7 +853,7 @@ function renderDelivery(el) {
       <div class="kpi"><div class="l">Out now</div><div class="v">${active.filter((o) => o.status === 'out').length}</div></div>
       <div class="kpi"><div class="l">Cash to collect</div><div class="v">${fmt(codToCollect)}</div></div></div>
     <div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Rider</th><th></th></tr></thead>
+      <thead><tr><th>Order</th><th>Customer</th><th class="num">Total</th><th>Status</th><th>Rider</th><th></th></tr></thead>
       <tbody>${active.length ? active.map((o) => `
         <tr>
           <td><b>#${o.id}</b><div class="muted small">${minutesSince(o.created_at)} min ago</div></td>
@@ -599,6 +908,7 @@ function renderReports(el) {
       <div class="kpi"><div class="l">Net sales</div><div class="v">${fmt(r.net)}</div><div class="s">paid orders, after discounts</div></div>
       <div class="kpi"><div class="l">Orders</div><div class="v">${r.orders}</div><div class="s">${r.byType.dine} dine-in · ${r.byType.take} takeaway · ${r.byType.deliv} delivery</div></div>
       <div class="kpi"><div class="l">Average bill</div><div class="v">${fmt(r.avg)}</div><div class="s">per paid order</div></div>
+      <div class="kpi"><div class="l">Tax collected</div><div class="v">${fmt(r.tax)}</div><div class="s">service charge ${fmt(r.service)}</div></div>
       <div class="kpi"><div class="l">Discounts given</div><div class="v">${fmt(r.discounts)}</div><div class="s">${r.loyaltyUsed} loyalty reward${r.loyaltyUsed === 1 ? '' : 's'}</div></div>
       <div class="kpi"><div class="l">Unpaid / cancelled</div><div class="v">${fmt(r.unpaid)}</div><div class="s">${r.unpaidCount} unpaid · ${r.cancelled} cancelled</div></div>
     </div>
@@ -607,9 +917,11 @@ function renderReports(el) {
         <div class="bars">${hours.map((h) => { const v = r.byHour[h] || 0; return `<div title="${hl(h)}: ${fmt(v)}"><span>${v ? (v / 1000).toFixed(1) + 'k' : ''}</span><span class="b ${v === maxH && v ? 'top' : ''}" style="height:${Math.round(v / maxH * 80)}%"></span>${hl(h)}</div>`; }).join('')}</div>
       </section>
       <section class="panel"><h2>Payments</h2>
-        ${Object.entries(r.byPay).map(([k, v]) => `<div class="meter"><span style="width:90px">${esc(k)}</span><span class="track"><span style="width:${Math.round(v / payTotal * 100)}%"></span></span><b style="width:90px" class="right">${fmt(v)}</b></div>`).join('') || '<div class="muted">No paid orders yet.</div>'}
+        ${Object.entries(r.byPay).map(([k, v]) => `<div class="meter"><span style="width:110px">${esc(k)}</span><span class="track"><span style="width:${Math.round(v / payTotal * 100)}%"></span></span><b style="width:90px" class="right">${fmt(v)}</b></div>`).join('') || '<div class="muted">No paid orders yet.</div>'}
         <h2 style="margin-top:16px">Order type</h2>
-        ${['dine', 'take', 'deliv'].map((k) => `<div class="meter"><span style="width:90px">${TYPE_LABEL[k]}</span><span class="track"><span style="width:${Math.round(r.byType[k] / typeTotal * 100)}%;background:var(--ink)"></span></span><b style="width:90px" class="right">${r.byType[k]}</b></div>`).join('')}
+        ${['dine', 'take', 'deliv'].map((k) => `<div class="meter"><span style="width:110px">${TYPE_LABEL[k]}</span><span class="track"><span style="width:${Math.round(r.byType[k] / typeTotal * 100)}%;background:var(--ink)"></span></span><b style="width:90px" class="right">${r.byType[k]}</b></div>`).join('')}
+        <h2 style="margin-top:16px">Discounts by reason</h2>
+        ${Object.entries(r.byReason).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="meter"><span style="flex:1">${esc(k)}</span><b class="right">${fmt(v)}</b></div>`).join('') || '<div class="muted">No discounts.</div>'}
       </section>
       <section class="panel inc"><h2>Staff incentives today</h2>
         <div class="muted small" style="margin:-6px 0 10px">Counted from today's orders · policy v1.0 · verify before paying</div>
@@ -623,23 +935,25 @@ function renderReports(el) {
         ${r.top.map((t, i) => `<tr><td>${i + 1}</td><td>${esc(t.name)}</td><td class="num">${t.qty}</td><td class="num">${fmt(t.value)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted">No sales yet.</div>'}
     </section>
     <section class="panel"><h2>Orders</h2>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Type</th><th>Items</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>
-      ${S.rep.orders.slice(0, 100).map((o) => `<tr>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Type</th><th>Items</th><th>Discount</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>
+      ${S.rep.orders.slice(0, 150).map((o) => `<tr>
         <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
         <td>${TYPE_LABEL[o.type]}${o.table_no ? ' · ' + esc(o.table_no) : ''}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td>
+        <td class="small">${Number(o.discount) ? `${fmt(o.discount)}<br><span class="muted">${esc(o.discount_label)}</span>` : '—'}</td>
         <td>${o.status === 'cancelled' ? '<span class="tag warn">Cancelled</span>' : o.paid ? esc(o.payment) : '<span class="tag">Unpaid</span>'}</td>
         <td class="num">${fmt(o.total)}</td>
-        <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No orders in this period.</td></tr>'}
+        <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No orders in this period.</td></tr>'}
       </tbody></table></div>
     </section>`;
 }
 
 function downloadCsv() {
-  const head = ['order', 'date', 'type', 'table', 'customer', 'phone', 'items', 'subtotal', 'discount', 'tax', 'delivery_fee', 'total', 'payment', 'paid', 'status'];
+  const head = ['order', 'date', 'type', 'table', 'customer', 'phone', 'items', 'subtotal', 'discount', 'discount_reason', 'service_charge', 'tax_rate', 'tax', 'delivery_fee', 'round_off', 'total', 'payment', 'cash_received', 'change', 'paid', 'status'];
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const rows = S.rep.orders.map((o) => [o.id, o.created_at, TYPE_LABEL[o.type], o.table_no, o.customer_name, o.customer_phone,
-    o.items.map((l) => `${l.qty}x ${l.name}`).join('; '), o.subtotal, o.discount, o.tax, o.delivery_fee, o.total, o.payment, o.paid ? 'yes' : 'no', o.status].map(q).join(','));
+    o.items.map((l) => `${l.qty}x ${l.name}`).join('; '), o.subtotal, o.discount, o.discount_label, o.service_charge || 0, o.tax_rate || 0, o.tax, o.delivery_fee,
+    o.round_off || 0, o.total, o.payment, o.cash_received || 0, o.change_due || 0, o.paid ? 'yes' : 'no', o.status].map(q).join(','));
   const blob = new Blob([[head.join(','), ...rows].join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -660,29 +974,28 @@ async function selectCustomer(phone, quiet) {
 function renderCustomers(el) {
   el.className = 'cust';
   if (!S.cs.loaded) { S.cs.loaded = true; run(async () => { await loadCustomers(); renderScreen(); }); }
-  const req = Number(S.settings.loyalty_stamps) || 5;
   const c = S.cs.sel;
   el.innerHTML = `
     <section class="cust-list" aria-label="Customer list">
       <h1 style="margin:0;font-size:24px">Customers</h1>
       <label class="search" style="max-width:none">${icon('search', 18)}<span class="sr">Search customers</span>
         <input data-bind="csq" type="search" placeholder="Search by phone or name" value="${esc(S.cs.q)}" autocomplete="off"></label>
-      <div class="list" id="cust-rows">${custRows(req)}</div>
+      <div class="list" id="cust-rows">${custRows()}</div>
     </section>
     <section class="screen" aria-label="Customer details">
       ${c ? `
       <div class="screen-head"><div><h1>${esc(c.name || 'Customer')}</h1><div class="muted">${esc(c.phone)}${c.address ? ' · ' + esc(c.address) : ''}</div></div>
         <span class="grow"></span>
-        <a class="btn btn-ok" target="_blank" rel="noopener" href="${esc(waLink(c.phone, rewardReady(c, req)
-          ? `Assalam o Alaikum${c.name ? ' ' + c.name : ''}! Your KAFEO loyalty card is full — enjoy ${S.settings.loyalty_discount_pct}% off on your next visit. See you soon at KAFEO, Shadman.`
-          : `Assalam o Alaikum${c.name ? ' ' + c.name : ''}! You have ${c.stamps || 0} of ${req} stamps on your KAFEO loyalty card. ${req - (c.stamps || 0)} more visit(s) and you get ${S.settings.loyalty_discount_pct}% off!`))}">WhatsApp reminder</a>
+        <a class="btn btn-ok" target="_blank" rel="noopener" href="${esc(waLink(c.phone, rewardReady(c, req())
+          ? `Assalam o Alaikum${c.name ? ' ' + c.name : ''}! Your KAFEO loyalty card is full — enjoy ${loyalPct()}% off on your next visit. See you soon at KAFEO, Shadman.`
+          : `Assalam o Alaikum${c.name ? ' ' + c.name : ''}! You have ${c.stamps || 0} of ${req()} stamps on your KAFEO loyalty card. ${req() - (c.stamps || 0)} more visit(s) and you get ${loyalPct()}% off!`))}">WhatsApp reminder</a>
         <button type="button" class="btn btn-primary" data-act="orderFor" data-phone="${esc(c.phone)}">Start order</button></div>
       <div class="cols">
-        <div class="loyal-card" aria-label="Loyalty card, ${c.stamps || 0} of ${req} stamps">
+        <div class="loyal-card" aria-label="Loyalty card, ${c.stamps || 0} of ${req()} stamps">
           <div class="row"><span class="brand">KAFEO</span><span class="grow"></span><span class="small" style="letter-spacing:2px;color:var(--night-muted)">LOYALTY</span></div>
           <div class="small" style="color:var(--night-muted)">Coffee • Food • Motivation</div>
-          <div class="dots">${Array.from({ length: req }, (_, i) => `<i class="${i < (c.stamps || 0) ? 'on' : ''}">${i < (c.stamps || 0) ? '✓' : i === req - 1 ? S.settings.loyalty_discount_pct + '%' : ''}</i>`).join('')}</div>
-          <div class="row small" style="color:var(--night-muted)"><span>${req} stamps = ${S.settings.loyalty_discount_pct}% off</span><span class="grow"></span><span>${c.stamps || 0} of ${req}</span></div>
+          <div class="dots">${Array.from({ length: req() }, (_, i) => `<i class="${i < (c.stamps || 0) ? 'on' : ''}">${i < (c.stamps || 0) ? '✓' : i === req() - 1 ? loyalPct() + '%' : ''}</i>`).join('')}</div>
+          <div class="row small" style="color:var(--night-muted)"><span>${req()} stamps = ${loyalPct()}% off</span><span class="grow"></span><span>${c.stamps || 0} of ${req()}</span></div>
         </div>
         <div class="kpis" style="align-content:start">
           <div class="kpi"><div class="l">Visits</div><div class="v">${c.visits || 0}</div></div>
@@ -708,12 +1021,12 @@ function renderCustomers(el) {
       </section>` : '<div class="empty">Pick a customer to see their loyalty card and history. Customers are added automatically when the counter enters a phone number on an order.</div>'}
     </section>`;
 }
-function custRows(req) {
+function custRows() {
   return S.cs.list.length ? S.cs.list.map((p) => `
     <button type="button" class="cust-row ${S.cs.sel?.phone === p.phone ? 'on' : ''}" data-act="pickCust" data-phone="${esc(p.phone)}">
       <span class="avatar">${esc((p.name || '#').trim().charAt(0).toUpperCase() || '#')}</span>
       <span class="grow"><b style="display:block">${esc(p.name || 'No name')}</b><span class="muted small">${esc(p.phone)}</span></span>
-      <span class="tag ${rewardReady(p, req) ? 'ok' : ''}">${p.stamps || 0}/${req}</span>
+      <span class="tag ${rewardReady(p, req()) ? 'ok' : ''}">${p.stamps || 0}/${req()}</span>
     </button>`).join('') : '<div class="empty">No customers found.</div>';
 }
 
@@ -726,7 +1039,7 @@ function renderMenu(el) {
   const optsText = (i) => i.options.map((o) => (o.k ? `${o.k}=${o.p}` : `${o.p}`)).join(', ');
   el.innerHTML = `
     <div class="screen-head"><h1>Menu & prices</h1><span class="muted">Changes show on every counter instantly.</span></div>
-    <div class="cats" style="padding:0">${S.menu.categories.map((c) =>
+    <div class="row wrap">${S.menu.categories.map((c) =>
       `<button type="button" class="pill ${S.mcat === c.id ? 'on' : ''}" data-act="mcat" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>On menu</th><th>Name</th><th>Description</th><th>Prices</th><th>Station</th><th>Incentive</th><th></th></tr></thead>
@@ -775,12 +1088,29 @@ function renderSettings(el) {
   el.innerHTML = `
     <div class="screen-head"><h1>Settings</h1></div>
     <form class="panel stack" data-submit="saveSettings">
-      <h2>Billing</h2>
+      <h2>Tax (GST / PRA)</h2>
       <div class="cols">
-        <label class="field">Tax % (PRA) — check your current rate<input name="tax_pct" type="number" min="0" max="30" step="0.5" value="${esc(s.tax_pct)}"></label>
-        <label class="field">Delivery fee (Rs)<input name="delivery_fee" type="number" min="0" step="10" value="${esc(s.delivery_fee)}"></label>
-        <label class="field">Tables (comma separated)<input name="tables" value="${esc((s.tables || []).join(', '))}"></label>
+        <label class="field">Tax on cash payments %<input name="tax_cash_pct" type="number" min="0" max="30" step="0.5" value="${esc(s.tax_cash_pct)}"></label>
+        <label class="field">Tax on card / JazzCash / Easypaisa / bank %<input name="tax_digital_pct" type="number" min="0" max="30" step="0.5" value="${esc(s.tax_digital_pct)}"></label>
+        <label class="field">PRA / NTN number (printed on receipts)<input name="tax_number" value="${esc(s.tax_number)}"></label>
       </div>
+      <label class="check"><input type="checkbox" name="prices_include_tax" ${s.prices_include_tax ? 'checked' : ''}> Menu prices already include tax (receipt shows “incl. tax”)</label>
+      <div class="muted small">Check the current PRA rates with your accountant before going live.</div>
+      <h2>Charges</h2>
+      <div class="cols">
+        <label class="field">Service charge on dine-in %<input name="service_pct" type="number" min="0" max="25" step="0.5" value="${esc(s.service_pct)}"></label>
+        <label class="field">Delivery fee (Rs)<input name="delivery_fee" type="number" min="0" step="10" value="${esc(s.delivery_fee)}"></label>
+        <label class="field">Round the total to nearest<select name="round_to">${[[0, 'Off (exact)'], [5, 'Rs 5'], [10, 'Rs 10']].map(([v, l]) => `<option value="${v}" ${Number(s.round_to) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="service_default_on" ${s.service_default_on !== false ? 'checked' : ''}> Add service charge to dine-in orders by default (cashier can switch it off per order)</label>
+      <label class="field">Tables (comma separated)<input name="tables" value="${esc((s.tables || []).join(', '))}"></label>
+      <h2>Discounts</h2>
+      <div class="cols">
+        <label class="field">Most a cashier can give (%) — owner has no limit<input name="cashier_max_discount_pct" type="number" min="0" max="100" value="${esc(s.cashier_max_discount_pct)}"></label>
+        <label class="field">Quick % buttons (comma separated)<input name="quick_discounts" value="${esc((s.quick_discounts || []).join(', '))}"></label>
+        <label class="field">Banks for card offers (comma separated)<input name="banks" value="${esc((s.banks || []).join(', '))}"></label>
+      </div>
+      <label class="field">Discount reasons — one per line<textarea name="discount_reasons">${esc((s.discount_reasons || []).join('\n'))}</textarea></label>
       <h2>Loyalty</h2>
       <div class="cols">
         <label class="field">Stamps for a reward<input name="loyalty_stamps" type="number" min="2" max="20" value="${esc(s.loyalty_stamps)}"></label>
@@ -788,7 +1118,7 @@ function renderSettings(el) {
       </div>
       <label class="field">Buy More, Save More — one per line, “amount = reward”
         <textarea name="bmsm">${esc((s.bmsm || []).map((b) => `${b.min} = ${b.reward}`).join('\n'))}</textarea></label>
-      <div><button class="btn btn-primary" type="submit">Save settings</button></div>
+      <div><button class="btn btn-primary btn-lg" type="submit">Save settings</button></div>
     </form>
     <section class="panel stack"><h2>Riders</h2>
       ${S.riders.map((r) => `<div class="row wrap">
@@ -803,26 +1133,24 @@ function renderSettings(el) {
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody>
         ${S.staff.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.role)}</td><td>${p.active ? '<span class="tag ok">Active</span>' : '<span class="tag warn">Blocked</span>'}</td></tr>`).join('')}
       </tbody></table></div>
-      <div class="muted small">To add a staff member or reset a password, follow “Add a staff login” in the README (done in Supabase, takes 1 minute). To block someone at once, set them inactive there.</div>
+      <div class="muted small">To add a staff member or reset a password, follow “Add staff logins” in the README (done in Supabase, takes 1 minute).</div>
     </section>
     ${LIVE ? '' : `<section class="panel stack"><h2>Demo data</h2><div class="muted small">Clears all demo orders and customers in this browser.</div>
       <div><button type="button" class="btn btn-danger" data-act="resetDemo">Reset demo data</button></div></section>`}`;
 }
 
 // =====================================================================
-// ACCOUNT DIALOG
+// ACCOUNT
 // =====================================================================
 function openAccount() {
-  const d = $('#dlg');
-  d.innerHTML = `<form class="dlg" data-submit="changePw" method="dialog">
-    <h2>${esc(S.me.profile.name)}</h2>
-    <div class="muted">Signed in as ${esc(S.me.user.email)} · ${esc(S.me.profile.role)}</div>
-    ${LIVE ? `<label class="field">New password (8+ characters)<input name="pw" type="password" minlength="8" autocomplete="new-password"></label>
-      <button class="btn" type="submit">Change password</button>` : ''}
-    <div class="row"><button type="button" class="btn btn-dark grow" data-act="signOut">Sign out</button>
-      <button type="button" class="btn grow" data-act="closeDlg">Close</button></div>
-  </form>`;
-  d.showModal();
+  S.m = { kind: 'account' };
+  openModal('sm', `
+    ${modalHead(esc(S.me.profile.name), `${esc(S.me.user.email)} · ${esc(S.me.profile.role)}`)}
+    <form class="mb stack" data-submit="changePw">
+      ${LIVE ? `<label class="field">New password (8+ characters)<input name="pw" type="password" minlength="8" autocomplete="new-password"></label>
+        <button class="btn" type="submit">Change password</button>` : '<div class="muted">Demo login.</div>'}
+    </form>
+    <footer class="mf"><button type="button" class="btn btn-dark btn-lg grow" data-act="signOut">Sign out</button></footer>`);
 }
 
 // =====================================================================
@@ -831,19 +1159,28 @@ function openAccount() {
 function receiptHtml(o) {
   const when = new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const where = o.type === 'dine' ? `Table ${esc(o.table_no)}` : TYPE_LABEL[o.type];
+  const d = o.meta?.discount;
+  const inclusive = o.meta?.inclusive ?? !!S.settings.prices_include_tax;
   return `<div class="rcpt">
-    <div class="c"><div class="brand">KAFEO</div><div class="sm">Coffee • Food • Motivation</div><div class="sm">${esc(CAFE.address)}<br>${esc(CAFE.phone)}</div></div>
+    <div class="c"><div class="brand">KAFEO</div><div class="sm">Coffee • Food • Motivation</div><div class="sm">${esc(CAFE.address)}<br>${esc(CAFE.phone)}</div>
+      ${S.settings.tax_number ? `<div class="sm">PRA/NTN: ${esc(S.settings.tax_number)}</div>` : ''}</div>
     <hr><div class="r"><span>Order #${o.id}</span><span>${where}</span></div><div class="r sm"><span>${when}</span><span>${o.paid ? 'PAID' : 'BILL — UNPAID'}</span></div>
     ${o.customer_name || o.customer_phone ? `<div class="sm">${esc(o.customer_name)} ${esc(o.customer_phone)}</div>` : ''}
     ${o.address ? `<div class="sm">${esc(o.address)}</div>` : ''}
-    <hr>${o.items.map((l) => `<div class="r"><span>${l.qty} × ${esc(l.name)}</span><span>${num(l.price * l.qty)}</span></div>`).join('')}
+    <hr>${o.items.map((l) => {
+      const ld = d?.scope === 'items' ? lineDiscount(l) : 0;
+      return `<div class="r"><span>${l.qty} × ${esc(l.name)}</span><span>${num(l.price * l.qty)}</span></div>${ld ? `<div class="r sm"><span>&nbsp;&nbsp;discount</span><span>-${num(ld)}</span></div>` : ''}`;
+    }).join('')}
     ${o.reward ? `<div class="r"><span>1 × ${esc(o.reward)}</span><span>0</span></div>` : ''}
     <hr><div class="r"><span>Subtotal</span><span>${num(o.subtotal)}</span></div>
-    ${Number(o.discount) ? `<div class="r"><span>Discount ${esc(o.discount_label)}</span><span>-${num(o.discount)}</span></div>` : ''}
-    ${Number(o.tax) ? `<div class="r"><span>Tax</span><span>${num(o.tax)}</span></div>` : ''}
+    ${Number(o.discount) ? `<div class="r"><span>Discount${d?.scope === 'bill' && d.type === 'pct' ? ' ' + num(d.value) + '%' : ''}${o.discount_label ? ' (' + esc(o.discount_label) + ')' : ''}</span><span>-${num(o.discount)}</span></div>` : ''}
+    ${Number(o.service_charge) ? `<div class="r"><span>Service charge</span><span>${num(o.service_charge)}</span></div>` : ''}
+    ${Number(o.tax) ? `<div class="r"><span>${inclusive ? 'Incl. tax' : 'Tax'} ${num(o.tax_rate)}%</span><span>${num(o.tax)}</span></div>` : ''}
     ${Number(o.delivery_fee) ? `<div class="r"><span>Delivery</span><span>${num(o.delivery_fee)}</span></div>` : ''}
+    ${Number(o.round_off) ? `<div class="r"><span>Round off</span><span>${Number(o.round_off) > 0 ? '' : '-'}${num(Math.abs(o.round_off))}</span></div>` : ''}
     <div class="r big"><span>TOTAL</span><span>Rs ${num(o.total)}</span></div>
     ${o.paid ? `<div class="r"><span>Paid by</span><span>${esc(o.payment)}</span></div>` : ''}
+    ${Number(o.cash_received) ? `<div class="r"><span>Cash received</span><span>${num(o.cash_received)}</span></div><div class="r"><span>Change</span><span>${num(o.change_due)}</span></div>` : ''}
     <hr><div class="c sm">Thank you for visiting KAFEO<br>Order on WhatsApp: ${esc(CAFE.phone)}<br>${esc(CAFE.web)} · ${esc(CAFE.insta)}</div>
   </div>`;
 }
@@ -856,9 +1193,11 @@ function printZ() {
     <div class="r big"><span>Net sales</span><span>${num(r.net)}</span></div>
     <div class="r"><span>Paid orders</span><span>${r.orders}</span></div>
     <div class="r"><span>Discounts</span><span>${num(r.discounts)}</span></div>
-    <div class="r"><span>Tax</span><span>${num(r.tax)}</span></div>
+    <div class="r"><span>Service charge</span><span>${num(r.service)}</span></div>
+    <div class="r"><span>Tax collected</span><span>${num(r.tax)}</span></div>
     <div class="r"><span>Delivery fees</span><span>${num(r.fees)}</span></div><hr>
     ${Object.entries(r.byPay).map(([k, v]) => `<div class="r"><span>${esc(k)}</span><span>${num(v)}</span></div>`).join('')}<hr>
+    ${Object.entries(r.byReason).map(([k, v]) => `<div class="r sm"><span>Disc: ${esc(k)}</span><span>${num(v)}</span></div>`).join('')}
     <div class="r"><span>Unpaid bills (${r.unpaidCount})</span><span>${num(r.unpaid)}</span></div>
     <div class="r"><span>Cancelled orders</span><span>${r.cancelled}</span></div><hr>
     ${inc.pools.map((p) => `<div class="r"><span>${esc(p.label)} (${p.count})</span><span>${num(p.earned)}</span></div>`).join('')}
@@ -869,37 +1208,94 @@ function printZ() {
 // =====================================================================
 // EVENTS
 // =====================================================================
+const findOrder = (id) => S.open.find((x) => x.id === id) || S.today.find((x) => x.id === id) || S.rep.orders.find((x) => x.id === id);
 const ACT = {
   toastAct: () => { const f = toastAction; $('#toast').className = ''; f?.(); },
   demoFill: (d) => { $('input[name=email]').value = d.email; $('input[name=password]').value = DEMO_PASSWORD; },
-  signOut: () => run(async () => { unsub?.(); unsub = null; await api.signOut(); S.me = null; location.hash = ''; $('#dlg')?.close?.(); renderLogin(); }),
+  signOut: () => run(async () => { unsub?.(); unsub = null; closeModal(); await api.signOut(); S.me = null; location.hash = ''; renderLogin(); }),
   account: () => openAccount(),
-  closeDlg: () => $('#dlg').close(),
+  closeModal: () => closeModal(),
+
+  // order screen
   cat: (d) => { S.cat = d.id; S.q = ''; const q = $('[data-bind=q]'); if (q) q.value = ''; renderCats(); renderGrid(); },
   add: (d) => addToCart(d.id, Number(d.o)),
   qty: (d) => {
-    const l = S.cart.find((x) => x.key === d.k); if (!l) return;
+    const l = S.cart[Number(d.i)]; if (!l) return;
     l.qty += Number(d.d);
-    if (l.qty <= 0) S.cart = S.cart.filter((x) => x !== l);
-    renderLines(); renderTotals(); renderThead();
+    if (l.qty <= 0) S.cart.splice(Number(d.i), 1);
+    renderSummary(); renderGrid();
   },
-  type: (d) => { S.type = d.v; renderThead(); renderTotals(); },
-  table: (d) => { S.table = d.v; renderThead(); },
-  disc: (d) => { S.disc = d.v; renderTotals(); },
-  pay: (d) => { S.pay = d.v; renderTotals(); },
-  place: (d) => placeOrder(d.paid === '1'),
-  bills: () => { S.billsOpen = true; renderDrawer(); },
-  closeBills: (d, el, e) => { if (e.target.closest('[data-stop]') && !el.matches('button')) return; S.billsOpen = false; renderDrawer(); },
-  payBill: (d) => run(async () => {
-    const o = await payBill(Number(d.id), d.v);
-    renderBillsBadge(); renderDrawer();
-    if (o) toast(`Order #${o.id} paid by ${o.payment}`, { action: { label: 'Print receipt', fn: () => printReceipt(o) } });
+  type: (d) => { S.type = d.v; renderSummary(); },
+  details: (d) => openDetails(d.focus),
+  pickTable: (d) => { S.table = d.v; renderDetails(); },
+  toggleService: () => { S.serviceOn = !S.serviceOn; renderSummary(); },
+  clearCart: () => {
+    if (S.cart.length && !confirm(S.editing ? 'Stop editing this bill? Changes won’t be saved.' : 'Clear this order?')) return;
+    resetOrder(); renderSummary(); renderGrid();
+  },
+  cancelEdit: () => { resetOrder(); renderSummary(); renderGrid(); },
+  applyLoyalty: () => {
+    if (!loyaltyAvailable()) return;
+    S.discount = { scope: 'bill', type: 'pct', value: loyalPct(), reason: 'Loyalty reward', bank: '' };
+    S.cart.forEach((l) => { l.disc = null; });
+    if (S.m?.kind === 'discount') closeModal();
+    renderSummary(); toast(`Loyalty reward applied — ${loyalPct()}% off`);
+  },
+  saveOrder: () => run(async () => {
+    const wasEdit = !!S.editing;
+    const row = await saveOrder(null);
+    if (row) toast(wasEdit ? `Order #${row.id} updated` : `Order #${row.id} sent to kitchen`, { action: { label: 'Print bill', fn: () => printReceipt(row) } });
   }),
-  print: (d) => run(async () => { const o = S.open.find((x) => x.id === Number(d.id)) || S.today.find((x) => x.id === Number(d.id)) || S.rep.orders.find((x) => x.id === Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printReceipt(o); }),
+  payNow: () => openPayment(null),
+
+  // line pop-up
+  editLine: (d) => openLine(Number(d.i)),
+  lineQty: (d) => { S.m.qty = Math.max(1, S.m.qty + Number(d.d)); renderLineModal(); },
+  lineNote: (d) => { S.m.note = S.m.note ? (S.m.note.includes(d.v) ? S.m.note : S.m.note + ', ' + d.v) : d.v; renderLineModal(); },
+  lineRemove: () => { S.cart.splice(S.m.idx, 1); closeModal(); renderSummary(); renderGrid(); },
+  lineSave: () => { const l = S.cart[S.m.idx]; l.qty = S.m.qty; l.note = S.m.note.trim(); closeModal(); renderSummary(); renderGrid(); },
+
+  // discount pop-up
+  discount: () => openDiscount(),
+  dScope: (d) => { S.m.scope = d.v; renderDiscount(); },
+  dType: (d) => { S.m.type = d.v; S.m.value = ''; renderDiscount(); },
+  dQuick: (d) => { S.m.value = Number(d.v); renderDiscount(); },
+  dLineType: (d) => { S.m.lines[Number(d.i)].type = d.v; renderDiscount(); },
+  dReason: (d) => { S.m.reason = S.m.reason === d.v ? '' : d.v; S.m.custom = ''; renderDiscount(); },
+  dBank: (d) => { S.m.bank = d.v; renderDiscount(); },
+  dRemove: () => { S.discount = null; S.cart.forEach((l) => { l.disc = null; }); closeModal(); renderSummary(); toast('Discount removed'); },
+  dApply: () => {
+    const v = discountPreview();
+    if (!v.d || v.over) return;
+    S.discount = v.d;
+    const lines = draftLines();
+    S.cart.forEach((l, i) => { l.disc = lines[i].disc; });
+    closeModal(); renderSummary(); toast(`Discount applied · −${fmt(v.after.discount)}`);
+  },
+
+  // payment pop-up
+  pMethod: (d) => { S.m.method = d.v; renderPayment(); },
+  pCash: (d) => { S.m.received = Number(d.v); renderPayment(); },
+  pComplete: () => completePayment(),
+
+  // bills drawer
+  bills: (d) => { S.billsOpen = true; S.billsTab = d.tab || 'open'; renderDrawer(); },
+  billsTab: (d) => { S.billsTab = d.v; renderDrawer(); },
+  closeBills: (d, el, e) => { if (e.target.closest('[data-stop]') && !el.matches('button')) return; S.billsOpen = false; renderDrawer(); },
+  payOpen: (d) => { const o = findOrder(Number(d.id)); if (o) openPayment(o); },
+  editOpen: (d) => {
+    const o = findOrder(Number(d.id)); if (!o) return;
+    if (S.cart.length && !S.editing && !confirm('Replace the order on screen with this bill?')) return;
+    loadForEdit(o); S.billsOpen = false; renderDrawer(); renderSummary(); renderGrid();
+    toast(`Editing order #${o.id} — add items, then Update or Pay`);
+  },
+  print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printReceipt(o); }),
   cancelOrder: (d) => {
-    if (!confirm(`Cancel order #${d.id}? It will be kept in reports as cancelled.`)) return;
+    if (!confirm(`Cancel order #${d.id}? It stays in reports as cancelled.`)) return;
     run(async () => { await api.updateOrder(Number(d.id), { status: 'cancelled' }); await refreshOrders(); renderBillsBadge(); renderDrawer(); toast(`Order #${d.id} cancelled`); });
   },
+
+  // kitchen & delivery
   station: (d) => { S.station = d.v; renderScreen(); },
   kstatus: (d) => run(async () => { await api.updateOrder(Number(d.id), { status: d.v }); await refreshOrders(); renderScreen(); }),
   outFor: (d) => {
@@ -909,22 +1305,24 @@ const ACT = {
   },
   delivered: (d) => run(async () => {
     const o = S.open.find((x) => x.id === Number(d.id)); if (!o) return;
-    if (!o.paid) await payBill(o.id, 'Cash (COD)');
+    if (!o.paid) await payExisting(o, 'Cash (COD)');
     await api.updateOrder(o.id, { status: 'done' });
     await refreshOrders(); renderScreen(); toast(`Order #${o.id} delivered`);
   }),
+
+  // reports, customers, menu, settings
   range: (d) => { S.rep.range = d.v; S.rep.loaded = false; renderScreen(); },
   csv: () => downloadCsv(),
   zreport: () => printZ(),
   pickCust: (d) => run(() => selectCustomer(d.phone)),
   orderFor: (d) => {
     const c = S.cs.sel;
-    Object.assign(S, { phone: d.phone, customer: c, custName: c?.name || '', address: c?.address || '', cart: [], disc: 'none' });
+    resetOrder();
+    Object.assign(S, { phone: d.phone, customer: c, custName: c?.name || '', address: c?.address || '' });
     location.hash = '#order';
   },
   stamp: (d) => run(async () => {
-    const req = Number(S.settings.loyalty_stamps) || 5;
-    const c = { ...S.cs.sel, stamps: Math.max(0, Math.min(req, (S.cs.sel.stamps || 0) + Number(d.d))) };
+    const c = { ...S.cs.sel, stamps: Math.max(0, Math.min(req(), (S.cs.sel.stamps || 0) + Number(d.d))) };
     await api.saveCustomer(c); await selectCustomer(c.phone); await loadCustomers(); renderScreen();
   }),
   mcat: (d) => { S.mcat = d.id; renderScreen(); },
@@ -948,6 +1346,7 @@ const ACT = {
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
 
+const csvList = (v) => String(v).split(',').map((t) => t.trim()).filter(Boolean);
 const SUBMIT = {
   login: async (form) => {
     const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
@@ -959,7 +1358,7 @@ const SUBMIT = {
   changePw: (form) => run(async () => {
     const pw = form.pw.value;
     if (pw.length < 8) throw new Error('Use at least 8 characters');
-    await api.changePassword(pw); form.pw.value = ''; $('#dlg').close(); toast('Password changed');
+    await api.changePassword(pw); form.pw.value = ''; closeModal(); toast('Password changed');
   }),
   saveCustomer: (form) => run(async () => {
     const c = { ...S.cs.sel, name: form.name.value.trim(), address: form.address.value.trim(), notes: form.notes.value.trim() };
@@ -971,7 +1370,7 @@ const SUBMIT = {
     const isBar = ['coffee', 'drinks'].includes(S.mcat);
     const item = {
       id: 'x' + Date.now().toString(36), category_id: S.mcat, name: form.name.value.trim(), note: form.note.value.trim(),
-      options: opts, station: isBar ? 'bar' : 'kitchen', counts: S.mcat === 'pizza' ? 'pizza' : S.mcat === 'steak' ? null : isBar ? 'drink' : null,
+      options: opts, station: isBar ? 'bar' : 'kitchen', counts: S.mcat === 'pizza' ? 'pizza' : isBar ? 'drink' : null,
       active: true, sort: Math.max(0, ...S.menu.items.map((i) => i.sort || 0)) + 1
     };
     const saved = await api.saveMenuItem(item);
@@ -982,10 +1381,18 @@ const SUBMIT = {
       const m = l.match(/^(\d+)\s*=\s*(.+)$/); if (!m) throw new Error(`Couldn’t read “${l}” — use: 3500 = Free dessert`);
       return { min: Number(m[1]), reward: m[2].trim() };
     });
+    const pct = (v) => Math.max(0, Math.min(100, Number(v) || 0));
     const data = {
       ...S.settings,
-      tax_pct: Number(form.tax_pct.value) || 0, delivery_fee: Number(form.delivery_fee.value) || 0,
-      tables: form.tables.value.split(',').map((t) => t.trim()).filter(Boolean),
+      tax_cash_pct: pct(form.tax_cash_pct.value), tax_digital_pct: pct(form.tax_digital_pct.value),
+      prices_include_tax: form.prices_include_tax.checked, tax_number: form.tax_number.value.trim(),
+      service_pct: pct(form.service_pct.value), service_default_on: form.service_default_on.checked,
+      delivery_fee: Math.max(0, Number(form.delivery_fee.value) || 0), round_to: Number(form.round_to.value) || 0,
+      tables: csvList(form.tables.value),
+      cashier_max_discount_pct: pct(form.cashier_max_discount_pct.value),
+      quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),
+      banks: csvList(form.banks.value),
+      discount_reasons: form.discount_reasons.value.split('\n').map((l) => l.trim()).filter(Boolean),
       loyalty_stamps: Number(form.loyalty_stamps.value) || 5, loyalty_discount_pct: Number(form.loyalty_discount_pct.value) || 50, bmsm
     };
     await api.saveSettings(data); S.settings = data; toast('Settings saved');
@@ -1000,7 +1407,8 @@ let custTimer = null;
 const BIND = {
   q: () => { renderCats(); renderGrid(); },
   phone: () => onPhoneInput(),
-  csq: () => { clearTimeout(custTimer); custTimer = setTimeout(() => run(async () => { await loadCustomers(); const el = $('#cust-rows'); if (el) el.innerHTML = custRows(Number(S.settings.loyalty_stamps) || 5); }), 250); }
+  feeOverride: () => { S.feeOverride = S.feeOverride === '' ? null : Math.max(0, Number(S.feeOverride) || 0); },
+  csq: () => { clearTimeout(custTimer); custTimer = setTimeout(() => run(async () => { await loadCustomers(); const el = $('#cust-rows'); if (el) el.innerHTML = custRows(); }), 250); }
 };
 
 document.addEventListener('click', (e) => {
@@ -1009,18 +1417,33 @@ document.addEventListener('click', (e) => {
   const fn = ACT[el.dataset.act];
   if (!fn) return;
   if (el.dataset.act === 'closeBills' && el.classList.contains('drawer-bg') && e.target.closest('[data-stop]')) return;
+  if (el.disabled) return;
   e.preventDefault();
   fn(el.dataset, el, e);
 });
 document.addEventListener('input', (e) => {
-  const el = e.target.closest('[data-bind]');
-  if (!el) return;
-  const k = el.dataset.bind;
-  if (k === 'csq') S.cs.q = el.value; else S[k] = el.value;
-  BIND[k]?.();
+  const t = e.target;
+  if (t.dataset.bind) {
+    const k = t.dataset.bind;
+    if (k === 'csq') S.cs.q = t.value; else S[k] = t.value;
+    BIND[k]?.();
+    return;
+  }
+  if (t.dataset.m && S.m) {               // field inside a pop-up
+    S.m[t.dataset.m] = t.value;
+    if (S.m.kind === 'discount') {
+      if (t.dataset.m === 'custom' && t.value) { S.m.reason = ''; document.querySelectorAll('#dlg [data-act=dReason]').forEach((b) => b.classList.remove('on')); }
+      refreshDiscountPreview();
+    }
+    if (S.m.kind === 'pay' && t.dataset.m === 'received') { const c = $('#change'); if (c) c.innerHTML = changeHtml(payBill()); document.querySelectorAll('#dlg [data-act=pCash]').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === Number(t.value))); }
+    return;
+  }
+  if (t.dataset.ml !== undefined && S.m?.kind === 'discount') { S.m.lines[Number(t.dataset.ml)].value = t.value; refreshDiscountPreview(); }
 });
 document.addEventListener('change', (e) => {
-  const el = e.target.closest('[data-change="rider"]');
+  const t = e.target;
+  if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  const el = t.closest('[data-change="rider"]');
   if (!el) return;
   run(async () => { await api.updateOrder(Number(el.dataset.id), { rider_id: el.value ? Number(el.value) : null }); await refreshOrders(); renderScreen(); });
 });
@@ -1030,5 +1453,7 @@ document.addEventListener('submit', (e) => {
   e.preventDefault();
   SUBMIT[form.dataset.submit]?.(form);
 });
+// Keyboard: Esc closes the bills drawer (the pop-up closes itself).
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.billsOpen) { S.billsOpen = false; renderDrawer(); } });
 
 boot();

@@ -15,13 +15,61 @@ export function bmsmReward(subtotal, rules) {
   return hit ? hit.reward : '';
 }
 
-// cart: [{price, qty}]; opts: {discPct, taxPct, deliveryFee, type}
-export function computeTotals(cart, opts) {
-  const subtotal = cart.reduce((s, l) => s + l.price * l.qty, 0);
-  const discount = Math.round(subtotal * (opts.discPct || 0) / 100);
-  const tax = Math.round((subtotal - discount) * (opts.taxPct || 0) / 100);
-  const fee = opts.type === 'deliv' && subtotal > 0 ? Number(opts.deliveryFee) || 0 : 0;
-  return { subtotal, discount, tax, fee, total: subtotal - discount + tax + fee };
+// Payment methods. "Digital" ones get the reduced PRA rate (card / mobile wallet / bank).
+export const PAY_METHODS = ['Cash', 'Card', 'JazzCash', 'Easypaisa', 'Bank transfer'];
+export const isDigital = (method) => !!method && method !== 'Cash' && method !== 'Cash (COD)';
+export const taxRateFor = (method, s) => Number(isDigital(method) ? s.tax_digital_pct : s.tax_cash_pct) || 0;
+
+// Discount on one cart line: {type:'pct'|'amt', value}
+export function lineDiscount(line) {
+  const gross = line.price * line.qty;
+  const d = line.disc;
+  if (!d || !(Number(d.value) > 0)) return 0;
+  return Math.min(gross, d.type === 'pct' ? gross * Math.min(100, Number(d.value)) / 100 : Number(d.value));
+}
+
+/*
+  Full bill. Order of operations:
+    subtotal → item discounts → bill discount → net
+    + service charge (dine-in, % of net)
+    + tax on (net + service) — added on top, or shown as "included" when menu prices include tax
+    + delivery fee → rounding → total
+  ctx: { type, method, discount:{scope:'bill'|'items', type:'pct'|'amt', value}, serviceOn, deliveryFee, settings }
+*/
+export function computeBill(lines, ctx) {
+  const s = ctx.settings || {};
+  const subtotal = lines.reduce((a, l) => a + l.price * l.qty, 0);
+  const d = ctx.discount;
+  const itemDisc = d && d.scope === 'items' ? lines.reduce((a, l) => a + lineDiscount(l), 0) : 0;
+  let billDisc = 0;
+  if (d && d.scope === 'bill' && Number(d.value) > 0) {
+    const base = subtotal - itemDisc;
+    billDisc = Math.min(base, d.type === 'pct' ? base * Math.min(100, Number(d.value)) / 100 : Number(d.value));
+  }
+  const discount = Math.round(itemDisc + billDisc);
+  const net = subtotal - discount;
+  const servicePct = Number(s.service_pct) || 0;
+  const service = ctx.type === 'dine' && ctx.serviceOn && servicePct > 0 ? Math.round(net * servicePct / 100) : 0;
+  const taxRate = taxRateFor(ctx.method || 'Cash', s);
+  const taxBase = net + service;
+  const inclusive = !!s.prices_include_tax;
+  const tax = taxRate > 0 ? Math.round(inclusive ? taxBase * taxRate / (100 + taxRate) : taxBase * taxRate / 100) : 0;
+  const fee = ctx.type === 'deliv' && subtotal > 0 ? Math.max(0, Number(ctx.deliveryFee) || 0) : 0;
+  const raw = net + service + (inclusive ? 0 : tax) + fee;
+  const step = Number(s.round_to) || 0;
+  const total = step > 0 ? Math.round(raw / step) * step : Math.round(raw);
+  return { subtotal, itemDisc: Math.round(itemDisc), billDisc: Math.round(billDisc), discount, net, service, servicePct, taxRate, tax, inclusive, fee, roundOff: total - raw, total };
+}
+
+// Effective discount as % of subtotal (used for the cashier limit).
+export const discountShare = (bill) => (bill.subtotal ? (bill.discount / bill.subtotal) * 100 : 0);
+
+// Quick cash amounts for the payment screen.
+export function cashSuggestions(total) {
+  const out = new Set([total]);
+  [100, 500, 1000].forEach((step) => out.add(Math.ceil(total / step) * step));
+  [1000, 5000].forEach((note) => { if (note > total) out.add(note); });
+  return [...out].filter((v) => v >= total).sort((a, b) => a - b).slice(0, 5);
 }
 
 // Loyalty after a paid order. usedReward = this order took the loyalty discount.
@@ -58,7 +106,7 @@ const sold = (o) => o.status !== 'cancelled' && o.paid;
 export function summarize(orders) {
   const paid = orders.filter(sold);
   const out = {
-    net: 0, orders: paid.length, discounts: 0, tax: 0, fees: 0, loyaltyUsed: 0,
+    net: 0, orders: paid.length, discounts: 0, tax: 0, fees: 0, service: 0, roundOff: 0, loyaltyUsed: 0, byReason: {},
     byPay: {}, byType: { dine: 0, take: 0, deliv: 0 }, byHour: {}, top: [], unpaid: 0, unpaidCount: 0, cancelled: 0
   };
   const items = {};
@@ -67,6 +115,12 @@ export function summarize(orders) {
     out.discounts += Number(o.discount);
     out.tax += Number(o.tax);
     out.fees += Number(o.delivery_fee);
+    out.service += Number(o.service_charge || 0);
+    out.roundOff += Number(o.round_off || 0);
+    if (Number(o.discount) > 0) {
+      const why = o.discount_label || 'Other';
+      out.byReason[why] = (out.byReason[why] || 0) + Number(o.discount);
+    }
     if (o.discount_label === 'Loyalty') out.loyaltyUsed++;
     out.byPay[o.payment || 'Other'] = (out.byPay[o.payment || 'Other'] || 0) + Number(o.total);
     out.byType[o.type] = (out.byType[o.type] || 0) + 1;

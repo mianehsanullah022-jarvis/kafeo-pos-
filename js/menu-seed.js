@@ -132,9 +132,20 @@ export const ITEMS = [
   it('addons', 'a11', 'Peri Peri Dip', one(90))
 ];
 
-// Starting settings. Tax and delivery fee are 0 until the owner sets them in Settings.
+// Starting settings. Tax, service charge and delivery fee are 0 until the owner sets them in Settings.
 export const DEFAULT_SETTINGS = {
-  tax_pct: 0,
+  // GST / PRA sales tax: one rate for cash, a (usually lower) rate for card & mobile wallets
+  tax_cash_pct: 0,
+  tax_digital_pct: 0,
+  prices_include_tax: false,     // true = menu prices already include tax (tax shown as "included")
+  tax_number: '',                // PRA / NTN shown on receipts
+  service_pct: 0,                // dine-in service charge %
+  service_default_on: true,
+  round_to: 0,                   // round the total to nearest 0 (off) / 5 / 10
+  cashier_max_discount_pct: 20,  // cashiers can't give more than this (owner can)
+  quick_discounts: [5, 10, 15, 20, 25, 30, 50],
+  discount_reasons: ['Bank / card offer', 'Friend & family', 'Regular customer', 'Staff meal', 'Complaint / recovery', 'Owner special'],
+  banks: ['HBL', 'Meezan', 'UBL', 'MCB', 'Alfalah', 'Standard Chartered'],
   delivery_fee: 0,
   loyalty_stamps: 5,
   loyalty_discount_pct: 50,

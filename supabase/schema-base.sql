@@ -100,6 +100,14 @@ create table if not exists public.orders (
   reward text not null default ''       -- Buy More Save More freebie, if any
 );
 
+alter table public.orders
+  add column if not exists service_charge numeric not null default 0,
+  add column if not exists tax_rate numeric not null default 0,
+  add column if not exists round_off numeric not null default 0,
+  add column if not exists cash_received numeric not null default 0,
+  add column if not exists change_due numeric not null default 0,
+  add column if not exists meta jsonb not null default '{}'::jsonb;
+
 create index if not exists orders_created_at_idx on public.orders (created_at desc);
 create index if not exists orders_status_idx on public.orders (status);
 

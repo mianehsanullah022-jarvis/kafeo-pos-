@@ -100,6 +100,14 @@ create table if not exists public.orders (
   reward text not null default ''       -- Buy More Save More freebie, if any
 );
 
+alter table public.orders
+  add column if not exists service_charge numeric not null default 0,
+  add column if not exists tax_rate numeric not null default 0,
+  add column if not exists round_off numeric not null default 0,
+  add column if not exists cash_received numeric not null default 0,
+  add column if not exists change_due numeric not null default 0,
+  add column if not exists meta jsonb not null default '{}'::jsonb;
+
 create index if not exists orders_created_at_idx on public.orders (created_at desc);
 create index if not exists orders_status_idx on public.orders (status);
 
@@ -283,6 +291,6 @@ begin
   ('a11', 'addons', 'Peri Peri Dip', '', '[{"k":"","p":90}]'::jsonb, 'kitchen', null, 93);
   end if;
   if not exists (select 1 from public.settings) then
-    insert into public.settings (id, data) values (1, '{"tax_pct":0,"delivery_fee":0,"loyalty_stamps":5,"loyalty_discount_pct":50,"tables":["T1","T2","T3","T4","T5","T6","T7","T8","H1","H2"],"bmsm":[{"min":3500,"reward":"Free dessert"},{"min":2500,"reward":"Free fries"},{"min":1500,"reward":"Free drink"}],"incentives":{"pizza":{"label":"Head chef · pizzas","tiers":[[11,200],[16,300],[21,400]]},"steak":{"label":"Kitchen · steak pool","tiers":[[11,300],[15,400],[20,500]]},"drink":{"label":"Servers · drinks pool","tiers":[[36,200],[46,300],[61,400]]}},"incentive_daily_cap":1300}'::jsonb);
+    insert into public.settings (id, data) values (1, '{"tax_cash_pct":0,"tax_digital_pct":0,"prices_include_tax":false,"tax_number":"","service_pct":0,"service_default_on":true,"round_to":0,"cashier_max_discount_pct":20,"quick_discounts":[5,10,15,20,25,30,50],"discount_reasons":["Bank / card offer","Friend & family","Regular customer","Staff meal","Complaint / recovery","Owner special"],"banks":["HBL","Meezan","UBL","MCB","Alfalah","Standard Chartered"],"delivery_fee":0,"loyalty_stamps":5,"loyalty_discount_pct":50,"tables":["T1","T2","T3","T4","T5","T6","T7","T8","H1","H2"],"bmsm":[{"min":3500,"reward":"Free dessert"},{"min":2500,"reward":"Free fries"},{"min":1500,"reward":"Free drink"}],"incentives":{"pizza":{"label":"Head chef · pizzas","tiers":[[11,200],[16,300],[21,400]]},"steak":{"label":"Kitchen · steak pool","tiers":[[11,300],[15,400],[20,500]]},"drink":{"label":"Servers · drinks pool","tiers":[[36,200],[46,300],[61,400]]}},"incentive_daily_cap":1300}'::jsonb);
   end if;
 end $$;

@@ -91,12 +91,14 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 ## Daily use
 
 **Counter (Order screen)**
-- Tap items (pizzas show S / M / L). Search finds anything by name.
-- Pick **Dine-in + table**, **Takeaway**, or **Delivery** (needs phone + address).
-- Enter the customer's phone to give loyalty stamps. When their card is full, **Loyalty 50%** lights up.
-- **Charge** = paid now and sent to kitchen. **Send · pay later** = sent to kitchen, bill stays open.
-- **Open bills** shows unpaid orders — take payment there, print a bill or reprint a receipt.
-- Buy More, Save More freebies are flagged automatically on the ticket and the receipt.
+- Categories on the left, items in the middle, the **order summary** on the right. The **Save order** and **Pay** buttons are always at the bottom of the summary.
+- Tap an item to add it (pizzas: tap S / M / L). A green number shows how many are already in the order.
+- Pick **Dine-in / Takeaway / Delivery**. Tap **Pick table**, **Customer** or **Note** to open the order details (tables with an open bill are marked).
+- Tap an item in the summary to change quantity or add a note for the kitchen (*no onions, extra spicy…*).
+- **Discount** opens the discount section: whole bill or item-wise, percentage or fixed rupees, quick buttons, a reason (bank/card offer with bank name, friend & family, staff meal…), and a live preview of the new total. Cashiers are limited to the % set in Settings; the owner has no limit. Loyalty rewards apply with one tap when a customer's card is full.
+- **Service charge** (dine-in) can be switched on/off per order. **Delivery fee** can be changed per order.
+- **Save order** = send to kitchen, pay later. **Pay** = payment screen: choose Cash / Card / JazzCash / Easypaisa / Bank transfer — tax updates for the method — enter cash received and it shows the change to return. Receipt prints automatically (can be switched off).
+- **Open bills** — take payment, print a bill, or **Add items / edit** an existing bill (new items are flagged “+1 NEW” in the kitchen).
 
 **Kitchen** — new orders beep. *Start preparing → Mark ready → Served / Picked up.* Tickets turn red after 15 minutes. Filter by Kitchen or Bar & coffee. Tap the screen once after opening it so the browser allows the beep.
 
@@ -106,12 +108,16 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 
 **Menu & prices (owner)** — change a price, hide an item, add a new one. Every counter updates instantly. Prices: `549` for one price, `S=999, M=1549, L=2399` for sizes.
 
-**Settings (owner)** — tax %, delivery fee, tables, loyalty rule, Buy More Save More, riders.
+**Settings (owner)** — GST/PRA tax for cash and for card/wallets, prices-include-tax option, PRA/NTN number for receipts, service charge %, delivery fee, rounding, tables, discount limit for cashiers, quick discount buttons, discount reasons, banks, loyalty rule, Buy More Save More, riders.
 
 ### Printing receipts
 Any printer works through the browser's print dialog. For an 80mm thermal printer: install its driver, set it as the default printer, and in Chrome's print dialog choose *Margins: None* once — Chrome remembers it.
 
 ---
+
+## Updating an existing database
+
+If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.)
 
 ## Good to know
 
