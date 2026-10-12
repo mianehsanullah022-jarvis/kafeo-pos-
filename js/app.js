@@ -44,6 +44,40 @@ const ICON = {
 };
 const icon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k]}"></path></svg>`;
 
+// Each menu category gets its own colour and drawing, used on item cards without a photo.
+const CAT_LOOK = {
+  deals: ['#F3E1C7', '#8C5517', 'M3 12V4h8l10 10-8 8L3 12z M7.5 7.5h.01'],
+  pizza: ['#F6D9C8', '#A0441E', 'M4 6c5-3 11-3 16 0L12 21 4 6z M9 10h.01 M14 11h.01 M12 15h.01'],
+  burgers: ['#F1E3BF', '#7A5A12', 'M4 11a8 6 0 0 1 16 0z M3 14h18 M4 17h16v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1z'],
+  steak: ['#EBD6D1', '#6E2A20', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16 M9 10c1-2 5-2 6 0s-1 5-3 5-4-3-3-5z'],
+  sand: ['#E9E5CB', '#5C5A1E', 'M3 15l9-9 9 9z M3 15v3h18v-3'],
+  sides: ['#F5E6B8', '#8A6410', 'M6 9h12l-2 12H8L6 9z M8 9V3 M11 9V2 M14 9V3 M16 9V5'],
+  coffee: ['#E8DACB', '#5B3A22', 'M5 8h12v6a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V8z M17 10h1.5a2.5 2.5 0 0 1 0 5H17 M9 3v2 M13 3v2'],
+  drinks: ['#D9E8E1', '#2F5E4C', 'M7 3h10l-1 18H8L7 3z M7.5 9h9 M14 3l2-2'],
+  dessert: ['#EEDCE6', '#6B3354', 'M4 21h16 M5 21v-7h14v7 M5 14c2 2 4 2 7 0s5-2 7 0 M12 10V7'],
+  addons: ['#E6E2DC', '#4F4741', 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16 M12 8v8 M8 12h8']
+};
+const FALLBACK_LOOK = [['#EDE3D5', '#5E3A10'], ['#DDE6EE', '#2C4A63'], ['#E7E0EF', '#4E3A66'], ['#E3EBD9', '#3F5A26']];
+function catLook(catId) {
+  if (CAT_LOOK[catId]) return CAT_LOOK[catId];
+  const h = [...String(catId)].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return [...FALLBACK_LOOK[h % FALLBACK_LOOK.length], 'M5 8h14v11H5z M8 8V5h8v3'];
+}
+function itemPic(i, cls = 'pic') {
+  const [bg, fg, d] = catLook(i.category_id);
+  if (i.image_url) return `<span class="${cls} photo"><img src="${esc(i.image_url)}" alt="" loading="lazy"></span>`;
+  return `<span class="${cls}" style="background:${bg};color:${fg}"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg></span>`;
+}
+// Shrink a photo before upload so cards load fast (max 640px, JPEG).
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+}
+
 const ROUTES = [
   { id: 'order', label: 'Order', roles: ['owner', 'cashier'] },
   { id: 'kitchen', label: 'Kitchen', roles: ['owner', 'cashier', 'kitchen'] },
@@ -325,13 +359,13 @@ function renderGrid() {
   el.innerHTML = items.length ? items.map((i) => {
     const n = inCart(i.id);
     const qty = n ? `<span class="in-cart" aria-label="${n} in order">${n}</span>` : '';
+    const note = i.note ? `<span class="nt">${esc(i.note)}</span>` : '';
     if (i.options.length === 1 && !i.options[0].k) {
-      return `<button type="button" class="icard single" data-act="add" data-id="${esc(i.id)}" data-o="0">${qty}
-        <span class="nm">${esc(i.name)}</span>${i.note ? `<span class="nt">${esc(i.note)}</span>` : ''}
-        <span class="pr">${fmt(i.options[0].p)}</span></button>`;
+      return `<button type="button" class="icard single" data-act="add" data-id="${esc(i.id)}" data-o="0">${qty}${itemPic(i)}
+        <span class="body"><span class="nm">${esc(i.name)}</span>${note}<span class="pr">${fmt(i.options[0].p)}<i aria-hidden="true">+</i></span></span></button>`;
     }
-    return `<div class="icard">${qty}<span class="nm">${esc(i.name)}</span>${i.note ? `<span class="nt">${esc(i.note)}</span>` : ''}
-      <div class="sizes">${i.options.map((o, idx) => `<button type="button" data-act="add" data-id="${esc(i.id)}" data-o="${idx}" aria-label="Add ${esc(i.name)} ${esc(o.k)}"><b>${esc(o.k)}</b>${num(o.p)}</button>`).join('')}</div></div>`;
+    return `<div class="icard">${qty}${itemPic(i)}<span class="body"><span class="nm">${esc(i.name)}</span>${note}
+      <span class="sizes">${i.options.map((o, idx) => `<button type="button" data-act="add" data-id="${esc(i.id)}" data-o="${idx}" aria-label="Add ${esc(i.name)} ${esc(o.k)}"><b>${esc(o.k)}</b>${num(o.p)}</button>`).join('')}</span></span></div>`;
   }).join('') : '<div class="empty">No items match.</div>';
 }
 
@@ -648,7 +682,7 @@ function renderDiscount() {
         <div>
           <div class="lbl">Reason</div>
           <div class="chips">${reasons.map((r) => `<button type="button" class="chip-sm ${m.reason === r && !m.custom ? 'on' : ''}" data-act="dReason" data-v="${esc(r)}">${esc(r)}</button>`).join('')}</div>
-          ${m.reason === 'Bank / card offer' && !m.custom ? `<div class="chips" style="margin-top:8px">${(s.banks || []).map((b) => `<button type="button" class="chip-sm ${m.bank === b ? 'on' : ''}" data-act="dBank" data-v="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
+          ${m.reason === 'Bank / card offer' && !m.custom ? `<div class="lbl" style="margin-top:12px">Which bank?</div><div class="chips">${(s.banks || []).map((b) => `<button type="button" class="chip-sm ${m.bank === b ? 'on' : ''}" data-act="dBank" data-v="${esc(b)}">${esc(b)}</button>`).join('')}</div>` : ''}
           <label class="field" style="margin-top:10px">Or type a reason<input data-m="custom" value="${esc(m.custom)}" placeholder="e.g. birthday" autocomplete="off"></label>
         </div>
       </div>
@@ -708,7 +742,7 @@ function renderPayment() {
       <div class="stack">
         <div class="lbl">Payment method</div>
         <div class="methods">${PAY_METHODS.map((pm) => `<button type="button" class="${m.method === pm ? 'on' : ''}" aria-pressed="${m.method === pm}" data-act="pMethod" data-v="${pm}">
-          <b>${pm}</b><small>${taxRateFor(pm, s) ? `Tax ${num(taxRateFor(pm, s))}%` : 'No tax set'}</small></button>`).join('')}</div>
+          <b>${pm}</b><small>${taxRateFor(pm, s) ? `Tax ${num(taxRateFor(pm, s))}%` : 'No tax'}</small></button>`).join('')}</div>
         ${m.method === 'Cash' ? `
           <label class="field">Cash received (Rs)<input data-m="received" type="number" min="0" step="10" inputmode="numeric" value="${esc(m.received)}" placeholder="${bill.total}"></label>
           <div class="chips">${cashSuggestions(bill.total).map((v) => `<button type="button" class="chip-lg ${Number(m.received) === v ? 'on' : ''}" data-act="pCash" data-v="${v}">${v === bill.total ? 'Exact' : 'Rs ' + num(v)}</button>`).join('')}</div>
@@ -1038,13 +1072,16 @@ function renderMenu(el) {
   const items = S.menu.items.filter((i) => i.category_id === S.mcat);
   const optsText = (i) => i.options.map((o) => (o.k ? `${o.k}=${o.p}` : `${o.p}`)).join(', ');
   el.innerHTML = `
-    <div class="screen-head"><h1>Menu & prices</h1><span class="muted">Changes show on every counter instantly.</span></div>
+    <div class="screen-head"><h1>Menu & prices</h1><span class="muted">Changes show on every counter instantly. Add a photo to show it on the order screen.</span></div>
     <div class="row wrap">${S.menu.categories.map((c) =>
       `<button type="button" class="pill ${S.mcat === c.id ? 'on' : ''}" data-act="mcat" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>
     <div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th>On menu</th><th>Name</th><th>Description</th><th>Prices</th><th>Station</th><th>Incentive</th><th></th></tr></thead>
+      <thead><tr><th>Photo</th><th>On menu</th><th>Name</th><th>Description</th><th>Prices</th><th>Station</th><th>Incentive</th><th></th></tr></thead>
       <tbody>${items.map((i) => `
         <tr data-row="${esc(i.id)}">
+          <td><div class="row">${itemPic(i, 'thumb')}
+            <label class="btn btn-sm">${i.image_url ? 'Change' : 'Upload'}<input type="file" accept="image/*" data-photo="${esc(i.id)}" class="sr"></label>
+            ${i.image_url ? `<button type="button" class="btn btn-sm btn-danger" data-act="removePhoto" data-id="${esc(i.id)}" aria-label="Remove photo">${icon('x', 16)}</button>` : ''}</div></td>
           <td><label class="check"><input type="checkbox" data-f="active" ${i.active ? 'checked' : ''}><span class="sr">Show ${esc(i.name)}</span></label></td>
           <td><input class="input" data-f="name" value="${esc(i.name)}" aria-label="Name" style="min-width:170px"></td>
           <td><input class="input" data-f="note" value="${esc(i.note)}" aria-label="Description" style="min-width:160px"></td>
@@ -1063,6 +1100,14 @@ function renderMenu(el) {
       </div>
       <div><button class="btn btn-primary" type="submit">Add item</button></div>
     </form>`;
+}
+async function setPhoto(id, url) {
+  const item = S.menu.items.find((i) => i.id === id);
+  let saved;
+  try { saved = await api.saveMenuItem({ ...item, image_url: url }); }
+  catch (e) { throw new Error(/image_url/.test(e.message) ? 'Photos need a one-time database update — run supabase/migrations/003_menu_photos.sql' : e.message); }
+  S.menu.items = S.menu.items.map((i) => (i.id === saved.id ? saved : i));
+  renderScreen();
 }
 function parseOptions(text) {
   const parts = String(text).split(',').map((s) => s.trim()).filter(Boolean);
@@ -1343,6 +1388,7 @@ const ACT = {
     await api.saveRider({ id: Number(d.id), name: g('name').value.trim(), phone: g('phone').value.trim(), active: g('active').checked });
     S.riders = await api.listRiders(); toast('Rider saved');
   }),
+  removePhoto: (d) => { if (confirm('Remove this photo?')) run(async () => { await setPhoto(d.id, ''); toast('Photo removed'); }); },
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
 
@@ -1443,6 +1489,16 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  if (t.dataset.photo && t.files?.[0]) {
+    const id = t.dataset.photo, file = t.files[0];
+    run(async () => {
+      toast('Uploading photo…');
+      const url = await api.uploadImage(await shrinkImage(file), id);
+      await setPhoto(id, url);
+      toast('Photo saved');
+    });
+    return;
+  }
   const el = t.closest('[data-change="rider"]');
   if (!el) return;
   run(async () => { await api.updateOrder(Number(el.dataset.id), { rider_id: el.value ? Number(el.value) : null }); await refreshOrders(); renderScreen(); });

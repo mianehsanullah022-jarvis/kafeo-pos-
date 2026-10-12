@@ -65,6 +65,10 @@ export function createDemoApi() {
       if (i >= 0) db.items[i] = { ...db.items[i], ...item }; else db.items.push(item);
       notify('menu'); return clone(item);
     },
+    // Demo: keep the (small, resized) photo inside the browser as a data link.
+    async uploadImage(blob) {
+      return await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+    },
     async loadSettings() { load(); return clone(db.settings); },
     async saveSettings(data) { db.settings = clone(data); notify('settings'); },
     async listRiders() { load(); return clone(db.riders); },

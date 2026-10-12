@@ -106,7 +106,7 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 
 **Reports (owner)** — today / 7 days / 30 days, sales by hour, payments, top sellers, staff incentives worked out from your policy tiers, **Print Z-report** at closing, and **Download orders (CSV)** for Excel.
 
-**Menu & prices (owner)** — change a price, hide an item, add a new one. Every counter updates instantly. Prices: `549` for one price, `S=999, M=1549, L=2399` for sizes.
+**Menu & prices (owner)** — change a price, hide an item, add a new one, upload a photo for any item (shown on the order screen; items without a photo get a coloured category tile). Every counter updates instantly. Prices: `549` for one price, `S=999, M=1549, L=2399` for sizes.
 
 **Settings (owner)** — GST/PRA tax for cash and for card/wallets, prices-include-tax option, PRA/NTN number for receipts, service charge %, delivery fee, rounding, tables, discount limit for cashiers, quick discount buttons, discount reasons, banks, loyalty rule, Buy More Save More, riders.
 
@@ -117,7 +117,7 @@ Any printer works through the browser's print dialog. For an 80mm thermal printe
 
 ## Updating an existing database
 
-If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.)
+If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.) For item photos, also run [`supabase/migrations/003_menu_photos.sql`](supabase/migrations/003_menu_photos.sql) once.
 
 ## Good to know
 

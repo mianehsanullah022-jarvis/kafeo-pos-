@@ -36,6 +36,13 @@ export function createSupabaseApi(url, key) {
       return { categories, items };
     },
     async saveMenuItem(item) { return must(await sb.from('menu_items').upsert(item).select().single()); },
+    // Upload a (already resized) photo for a menu item; returns its public link.
+    async uploadImage(blob, itemId) {
+      const path = `${itemId}-${Date.now()}.jpg`;
+      const { error } = await sb.storage.from('menu').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      if (error) throw new Error(/bucket|not found/i.test(error.message) ? 'Photo storage isn’t set up yet — run supabase/migrations/003_menu_photos.sql' : error.message);
+      return sb.storage.from('menu').getPublicUrl(path).data.publicUrl;
+    },
 
     async loadSettings() { return must(await sb.from('settings').select('data').eq('id', 1).single()).data; },
     async saveSettings(data) { must(await sb.from('settings').upsert({ id: 1, data, updated_at: new Date().toISOString() })); },

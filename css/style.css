@@ -115,6 +115,8 @@ a { color: var(--accent); }
 .live-dot.off i { background: #FF9A7A; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 #screen { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Order and Loyalty screens are side-by-side columns (the id rule above would otherwise stack them). */
+#screen.order, #screen.cust { flex-direction: row; }
 .screen { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
 .screen-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .screen-head h1 { margin: 0; font-size: 24px; font-weight: 800; }
@@ -135,7 +137,7 @@ a { color: var(--accent); }
 .catbar button.on small { color: rgba(255, 255, 255, .8); }
 
 /* Menu (middle) */
-.order-menu { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.order-menu { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--ground); }
 .search { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 12px; color: var(--muted); }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(140, 85, 23, .15); }
@@ -145,20 +147,28 @@ a { color: var(--accent); }
 .tool svg { color: var(--accent); }
 .badge { min-width: 22px; height: 22px; border-radius: 11px; background: var(--accent); color: #fff; font-size: 12px; display: inline-grid; place-items: center; padding: 0 6px; }
 .badge.zero { background: var(--line); color: var(--muted); }
-.grid { flex: 1; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; align-content: start; }
-.icard { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 118px; text-align: left; box-shadow: var(--shadow); }
-.icard .nm { font-weight: 800; font-size: 15px; line-height: 1.25; padding-right: 22px; }
-.icard .nt { font-size: 12px; color: var(--muted); line-height: 1.35; }
-.icard .pr { margin-top: auto; font-weight: 800; font-size: 16px; color: var(--accent-ink); }
-.icard.single { border-bottom: 3px solid var(--gold-deep); }
-.icard.single:hover { border-color: var(--accent); }
+.grid { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-rows: minmax(186px, auto); gap: 14px; align-content: start; }
+.icard { position: relative; height: 100%; width: 100%; font: inherit; color: inherit; cursor: pointer; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 0; display: flex; flex-direction: column; text-align: left; box-shadow: var(--shadow); overflow: hidden; transition: transform .08s, border-color .12s, box-shadow .12s; }
+.icard .pic { display: grid; place-items: center; height: 78px; flex-shrink: 0; }
+.icard .pic.photo { background: var(--line-soft); }
+.icard .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.icard .body { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
+.icard .nm { font-weight: 800; font-size: 15px; line-height: 1.25; }
+.icard .nt { font-size: 12px; color: var(--muted); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.icard .pr { margin-top: auto; padding-top: 6px; display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 16px; color: var(--accent-ink); }
+.icard .pr i { font-style: normal; width: 30px; height: 30px; border-radius: 15px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 20px; line-height: 1; }
+.icard.single:hover { border-color: var(--accent); box-shadow: 0 6px 18px rgba(140, 85, 23, .18); }
 .icard.single:active { transform: scale(.98); }
-.icard .sizes { margin-top: auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
-.icard .sizes button { min-height: 48px; border-radius: 10px; border: 1.5px solid #D8C3A1; background: var(--soft); color: var(--accent-ink); font-weight: 800; font-size: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; padding: 0 2px; }
+.icard .sizes { margin-top: auto; padding-top: 6px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.icard .sizes button { min-height: 50px; border-radius: 10px; border: 1.5px solid #D8C3A1; background: var(--soft); color: var(--accent-ink); font-weight: 800; font-size: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; padding: 0 2px; }
 .icard .sizes button b { font-size: 12px; color: var(--accent); }
 .icard .sizes button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 .icard .sizes button:hover b { color: #fff; }
-.in-cart { position: absolute; top: 10px; right: 10px; min-width: 24px; height: 24px; border-radius: 12px; background: var(--ok); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; padding: 0 6px; }
+.icard .sizes button:active { transform: scale(.96); }
+.thumb { width: 48px; height: 48px; border-radius: 10px; display: grid; place-items: center; overflow: hidden; flex-shrink: 0; }
+.thumb svg { width: 24px; height: 24px; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.in-cart { position: absolute; top: 8px; right: 8px; z-index: 1; box-shadow: 0 2px 6px rgba(0,0,0,.2); min-width: 24px; height: 24px; border-radius: 12px; background: var(--ok); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; padding: 0 6px; }
 
 /* Order summary (right) — header / scrolling items / fixed footer */
 .sum-panel { width: 400px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -356,7 +366,8 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .rail .k, .rail .spacer, .live-dot { display: none; }
   .rail a, .rail button { width: auto; min-width: 54px; min-height: 52px; padding: 0 6px; }
   .screen { padding: 16px; }
-  .order { flex-direction: column; overflow-y: auto; }
+  .order, #screen.order { flex-direction: column; overflow-y: auto; }
+  #screen.cust { flex-direction: column; }
   .catbar { width: 100%; flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
   .catbar button { flex-shrink: 0; min-height: 42px; }
   .grid { overflow: visible; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
