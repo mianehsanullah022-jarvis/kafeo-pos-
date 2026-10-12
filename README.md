@@ -138,6 +138,10 @@ If your database was set up before the discount/tax update, run [`supabase/migra
 - **Order numbers** start at 1001 and always go up. Occasionally a number is skipped — that's normal for the database and doesn't mean a missing order.
 - **Changing the starting menu file:** prices are managed in the app after setup. `js/menu-seed.js` is only the first-time seed; if you edit it, run `node tools/build-sql.mjs` to rebuild `supabase/schema.sql`.
 
+## Releasing an update
+
+Run `node tools/stamp-version.mjs` before committing. It stamps a new version on every file link so counters load the new code straight away (otherwise browsers can keep old files for ~10 minutes). The version shows under **Me** in the app.
+
 ## Try it on your own computer
 
 ES modules don't load from a double-clicked file, so serve the folder:

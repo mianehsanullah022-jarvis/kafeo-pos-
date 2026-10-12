@@ -1,16 +1,16 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js';
-import { DEFAULT_SETTINGS } from './menu-seed.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-0100';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-0100';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-0100';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js';
+} from './logic.js?v=2026.10.13-0100';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-0100')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1243,6 +1243,7 @@ function openAccount() {
       ${LIVE ? `<label class="field">New password (8+ characters)<input name="pw" type="password" minlength="8" autocomplete="new-password"></label>
         <button class="btn" type="submit">Change password</button>` : '<div class="muted">Demo login.</div>'}
     </form>
+    <div class="mb muted small" style="padding-top:0">App version ${esc(APP_VERSION)} · if this looks old, press Ctrl + Shift + R</div>
     <footer class="mf"><button type="button" class="btn btn-dark btn-lg grow" data-act="signOut">Sign out</button></footer>`);
 }
 
@@ -1456,9 +1457,15 @@ function printHtml(html) {
   if (!html) return;
   const p = PAPER[S.settings.paper] || PAPER['80safe'];
   const left = Math.max(0, Number(S.settings.print_offset_mm) || 0);
-  $('#print-area').innerHTML = `<style>@page { size: ${p.roll}mm auto; margin: 0; } #print-area { --slip-w: ${p.width}mm; --slip-left: ${left}mm; }</style>
+  const area = $('#print-area');
+  area.innerHTML = `<style>@page { size: ${p.roll}mm auto; margin: 0; } #print-area { --slip-w: ${p.width}mm; --slip-left: ${left}mm; }</style>
     <div class="paper-${p.roll}">${html}</div>`;
-  window.print();
+  // Wait until the logo / pictures are fully drawn, otherwise the printer gets a blank space.
+  const imgs = [...area.querySelectorAll('img')];
+  Promise.all(imgs.map((img) => (img.complete && img.naturalWidth ? (img.decode ? img.decode().catch(() => {}) : null)
+    : new Promise((r) => { img.onload = img.onerror = r; setTimeout(r, 3000); }))))
+    .then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+    .then(() => window.print());
 }
 async function customerFor(o) {
   if (!o.customer_phone || S.settings.receipt_loyalty === false) return null;
