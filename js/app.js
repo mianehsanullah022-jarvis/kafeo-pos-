@@ -1244,80 +1244,155 @@ function openAccount() {
 // =====================================================================
 // PRINTING (80mm thermal or any printer)
 // =====================================================================
-const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true });
+const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
+const invoiceNo = (o) => 'KF-' + String(o.id).padStart(6, '0');
+const typeText = (o) => o.type === 'dine' ? `Dine-in · ${esc(o.table_no)}` : o.type === 'take' ? 'Takeaway' : 'Delivery';
 const whereText = (o) => o.type === 'dine' ? `TABLE ${esc(o.table_no)}` : o.type === 'take' ? 'TAKEAWAY' : 'DELIVERY';
 
-// Customer receipt (paid) or bill (unpaid). opts: { reprint, customer }
+// KAFEO wordmark with the coffee-cup "O" (prints crisp at any size).
+const LOGO_SVG = `<svg class="logo" viewBox="0 0 260 64" xmlns="http://www.w3.org/2000/svg" aria-label="KAFEO">
+  <text x="2" y="52" font-family="Fraunces, Georgia, serif" font-weight="700" font-size="58" textLength="188" lengthAdjust="spacingAndGlyphs" fill="#000">KAFE</text>
+  <g transform="translate(204 10)" fill="none" stroke="#000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 10h34v18a16 16 0 0 1-16 16h-2A16 16 0 0 1 2 28z"></path>
+    <path d="M36 15h4a7 7 0 0 1 0 14h-4"></path>
+    <path d="M12 0c-2 3 2 4 0 7 M22 0c-2 3 2 4 0 7"></path>
+  </g></svg>`;
+
+// Rupees in words, Pakistani style (thousand / lakh / crore).
+function amountInWords(n) {
+  n = Math.round(Math.abs(Number(n) || 0));
+  if (!n) return 'Rupees Zero Only';
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const t = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = (x) => (x < 20 ? a[x] : t[Math.floor(x / 10)] + (x % 10 ? '-' + a[x % 10] : ''));
+  const three = (x) => [x >= 100 ? a[Math.floor(x / 100)] + ' Hundred' : '', two(x % 100)].filter(Boolean).join(' ');
+  const parts = [];
+  const crore = Math.floor(n / 1e7); n %= 1e7;
+  const lakh = Math.floor(n / 1e5); n %= 1e5;
+  const thousand = Math.floor(n / 1e3); n %= 1e3;
+  if (crore) parts.push(three(crore) + ' Crore');
+  if (lakh) parts.push(two(lakh) + ' Lakh');
+  if (thousand) parts.push(two(thousand) + ' Thousand');
+  if (n) parts.push(three(n));
+  return 'Rupees ' + parts.join(' ') + ' Only';
+}
+
+// Code 128 (set B) barcode as SVG — scannable invoice number.
+const C128 = ['212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312', '132212', '221213', '221312', '231212', '112232', '122132', '122231', '113222', '123122', '123221', '223211', '221132', '221231', '213212', '223112', '312131', '311222', '321122', '321221', '312212', '322112', '322211', '212123', '212321', '232121', '111323', '131123', '131321', '112313', '132113', '132311', '211313', '231113', '231311', '112133', '112331', '132131', '113123', '113321', '133121', '313121', '211331', '231131', '213113', '213311', '213131', '311123', '311321', '331121', '312113', '312311', '332111', '314111', '221411', '431111', '111224', '111422', '121124', '121421', '141122', '141221', '112214', '112412', '122114', '122411', '142112', '142211', '241211', '221114', '413111', '241112', '134111', '111242', '121142', '121241', '114212', '124112', '124211', '411212', '421112', '421211', '212141', '214121', '412121', '111143', '111341', '131141', '114113', '114311', '411113', '411311', '113141', '114131', '311141', '411131', '211412', '211214', '211232', '2331112'];
+function barcodeSvg(text) {
+  const vals = [...text].map((ch) => ch.charCodeAt(0) - 32);
+  const check = vals.reduce((sum, v, i) => sum + v * (i + 1), 104) % 103;
+  const codes = [104, ...vals, check, 106];
+  let x = 10, bars = '';
+  for (const c of codes) {
+    [...C128[c]].forEach((w, i) => { w = Number(w); if (i % 2 === 0) bars += `<rect x="${x}" y="0" width="${w}" height="40"></rect>`; x += w; });
+  }
+  return `<svg class="barcode" viewBox="0 0 ${x + 10} 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-label="${esc(text)}"><g fill="#000">${bars}</g></svg>`;
+}
+
+// QR code (WhatsApp ordering link). Loads a small library once; prints without it if offline.
+let qrLib = null;
+function loadQr() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  if (!qrLib) {
+    qrLib = new Promise((resolve) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+      sc.onload = () => resolve(window.qrcode || null);
+      sc.onerror = () => { qrLib = null; resolve(null); };
+      document.head.appendChild(sc);
+      setTimeout(() => resolve(window.qrcode || null), 2500);
+    });
+  }
+  return qrLib;
+}
+async function qrSvg(text) {
+  try {
+    const lib = await loadQr();
+    if (!lib) return '';
+    const q = lib(0, 'M'); q.addData(text); q.make();
+    return q.createSvgTag({ cellSize: 3, margin: 0, scalable: true });
+  } catch { return ''; }
+}
+
+// Customer receipt (paid) or bill (unpaid). opts: { reprint, customer, qr }
 function receiptHtml(o, opts = {}) {
   const s = S.settings;
   const d = o.meta?.discount;
   const inclusive = o.meta?.inclusive ?? !!s.prices_include_tax;
   const c = opts.customer;
   const qtyTotal = o.items.reduce((a, l) => a + l.qty, 0);
+  const net = Number(o.subtotal) - Number(o.discount);
+  const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
   const row = (l, r, cls = '') => `<div class="r ${cls}"><span>${l}</span><span>${r}</span></div>`;
+  const doc = o.status === 'cancelled' ? 'CANCELLED' : !o.paid ? 'PRE-BILL' : Number(o.tax) > 0 ? 'SALES TAX INVOICE' : 'SALES RECEIPT';
   return `<div class="slip rcpt">
-    <div class="c">
-      <div class="brand">KAFEO</div>
-      <div class="tagline">COFFEE • FOOD • MOTIVATION</div>
-      <div class="sm">${esc(CAFE.address)}</div>
-      <div class="sm">Tel / WhatsApp: ${esc(CAFE.phone)}</div>
-      ${s.tax_number ? `<div class="sm">PRA / NTN: ${esc(s.tax_number)}</div>` : ''}
-    </div>
-    <div class="title">${o.status === 'cancelled' ? 'CANCELLED' : o.paid ? 'SALES RECEIPT' : 'BILL — PLEASE PAY AT COUNTER'}${opts.reprint ? '<br><span class="sm">*** REPRINT ***</span>' : ''}</div>
-    <div class="meta">
-      ${row(`Order <b>#${o.id}</b>`, `<b>${whereText(o)}</b>`)}
-      ${row(fmtDate(o.created_at), fmtTime(o.paid ? o.updated_at || o.created_at : o.created_at))}
-      ${o.meta?.by ? row('Cashier', esc(o.meta.by)) : ''}
-      ${o.customer_name || o.customer_phone ? row('Customer', `${esc(o.customer_name)} ${esc(o.customer_phone)}`.trim()) : ''}
-      ${o.address ? `<div class="sm">Deliver to: ${esc(o.address)}</div>` : ''}
-    </div>
-    <div class="items">
-      <div class="ih"><span>Qty</span><span>Item</span><span>Rate</span><span>Amount</span></div>
-      ${o.items.map((l) => {
+    <header class="c">
+      ${LOGO_SVG}
+      <div class="tagline">COFFEE · FOOD · MOTIVATION</div>
+      <div class="addr">${esc(CAFE.address)}<br>Tel / WhatsApp ${esc(CAFE.phone)}${s.tax_number ? `<br>PRA / NTN: ${esc(s.tax_number)}` : ''}</div>
+    </header>
+    <div class="doc">${doc}${opts.reprint ? ' · DUPLICATE' : ''}</div>
+    <section class="info">
+      ${kv('Invoice', invoiceNo(o))}${kv('Date', fmtDate(o.created_at))}
+      ${kv('Order', typeText(o))}${kv('Time', fmtTime(o.paid ? o.updated_at || o.created_at : o.created_at))}
+      ${o.meta?.by ? kv('Cashier', esc(o.meta.by)) : ''}${o.paid ? kv('Payment', esc(o.payment)) : kv('Status', 'Unpaid')}
+    </section>
+    ${o.customer_name || o.customer_phone ? `<div class="cust">Customer:&nbsp;<b>${esc(o.customer_name || '—')}</b>${o.customer_phone ? '&nbsp;·&nbsp;' + esc(o.customer_phone) : ''}${o.address ? `<br>Deliver to: ${esc(o.address)}` : ''}</div>` : ''}
+    <table class="lines">
+      <thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+      <tbody>${o.items.map((l, i) => {
         const ld = d?.scope === 'items' ? lineDiscount(l) : 0;
-        return `<div class="ir"><span>${l.qty}</span><span>${esc(l.name)}${l.note ? `<i>${esc(l.note)}</i>` : ''}${ld ? `<i>discount −${num(ld)}</i>` : ''}</span><span>${num(l.price)}</span><span>${num(l.price * l.qty - ld)}</span></div>`;
+        return `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.note ? `<small>${esc(l.note)}</small>` : ''}${ld ? `<small>Item discount −${num(ld)}</small>` : ''}</td><td>${l.qty}</td><td>${num(l.price)}</td><td>${num(l.price * l.qty - ld)}</td></tr>`;
       }).join('')}
-      ${o.reward ? `<div class="ir"><span>1</span><span>${esc(o.reward)}<i>Buy More, Save More</i></span><span>0</span><span>0</span></div>` : ''}
-      <div class="sm right">${o.items.length} item${o.items.length === 1 ? '' : 's'} · ${qtyTotal} pcs</div>
-    </div>
-    <div class="totals">
-      ${row('Subtotal', num(o.subtotal))}
-      ${Number(o.discount) ? row(`Discount${d?.scope === 'bill' && d.type === 'pct' ? ' ' + num(d.value) + '%' : ''}${o.discount_label ? `<br><span class="sm">${esc(o.discount_label)}</span>` : ''}`, '−' + num(o.discount)) : ''}
-      ${Number(o.service_charge) ? row('Service charge', num(o.service_charge)) : ''}
-      ${Number(o.tax) ? row(`${inclusive ? 'Incl. ' : ''}${isDigital(o.payment) ? 'Card' : 'Cash'} tax ${num(o.tax_rate)}%`, num(o.tax)) : ''}
+      ${o.reward ? `<tr><td>${o.items.length + 1}</td><td>${esc(o.reward)}<small>Complimentary · Buy More, Save More</small></td><td>1</td><td>0</td><td>0</td></tr>` : ''}</tbody>
+    </table>
+    <div class="count">Items: ${o.items.length} &nbsp;|&nbsp; Quantity: ${qtyTotal}</div>
+    <section class="sums">
+      ${row('Gross amount', num(o.subtotal))}
+      ${Number(o.discount) ? row(`Discount${d?.scope === 'bill' && d.type === 'pct' ? ` (${num(d.value)}%)` : ''}${o.discount_label ? `<small>${esc(o.discount_label)}</small>` : ''}`, '− ' + num(o.discount)) + row('Net amount', num(net)) : ''}
+      ${Number(o.service_charge) ? row(`Service charge${o.meta?.serviceOn !== false && Number(s.service_pct) ? ` (${num(s.service_pct)}%)` : ''}`, num(o.service_charge)) : ''}
+      ${Number(o.tax) ? row(`Sales tax ${num(o.tax_rate)}%${inclusive ? ' (included)' : ''}<small>${isDigital(o.payment) ? 'Card / digital rate' : 'Cash rate'} · PRA</small>`, inclusive ? `(${num(o.tax)})` : num(o.tax)) : ''}
       ${Number(o.delivery_fee) ? row('Delivery charges', num(o.delivery_fee)) : ''}
-      ${Number(o.round_off) ? row('Round off', (Number(o.round_off) > 0 ? '+' : '−') + num(Math.abs(o.round_off))) : ''}
-      ${row('TOTAL', 'Rs ' + num(o.total), 'grand')}
-      ${o.paid ? row('Paid by', esc(o.payment)) : ''}
-      ${Number(o.cash_received) ? row('Cash received', num(o.cash_received)) + row('Change returned', num(o.change_due)) : ''}
-    </div>
-    ${c && s.receipt_loyalty !== false ? `<div class="loyal"><div>LOYALTY CARD · ${c.stamps || 0} / ${req()}</div>
+      ${Number(o.round_off) ? row('Rounding', (Number(o.round_off) > 0 ? '+ ' : '− ') + num(Math.abs(o.round_off))) : ''}
+    </section>
+    <div class="payable"><span>${o.paid ? 'TOTAL PAID' : 'NET PAYABLE'}</span><span>Rs ${num(o.total)}</span></div>
+    <div class="words">${amountInWords(o.total)}</div>
+    ${o.paid && Number(o.cash_received) ? `<section class="sums">${row('Cash received', num(o.cash_received))}${row('Change returned', num(o.change_due))}</section>` : ''}
+    ${!o.paid && o.status !== 'cancelled' ? '<div class="notice">Please check your bill and pay at the counter.</div>' : ''}
+    ${c && s.receipt_loyalty !== false ? `<div class="loyal">
+      <div class="lt">KAFEO LOYALTY · ${c.stamps || 0} of ${req()} stamps</div>
       <div class="dots">${Array.from({ length: req() }, (_, i) => `<span class="${i < (c.stamps || 0) ? 'on' : ''}"></span>`).join('')}</div>
-      <div class="sm">${rewardReady(c, req()) ? `Card full! ${loyalPct()}% off on your next visit` : `${req() - (c.stamps || 0)} more visit${req() - (c.stamps || 0) === 1 ? '' : 's'} for ${loyalPct()}% off`}</div></div>` : ''}
-    <div class="c foot">
+      <div>${rewardReady(c, req()) ? `Card complete — enjoy ${loyalPct()}% off on your next visit!` : `${req() - (c.stamps || 0)} more visit${req() - (c.stamps || 0) === 1 ? '' : 's'} to ${loyalPct()}% off`}</div></div>` : ''}
+    <footer>
+      ${opts.qr ? `<div class="qr-row"><div class="qr">${opts.qr}</div><div><b>Order again on WhatsApp</b><br>Scan the code or message<br>${esc(CAFE.phone)}<br>${esc(CAFE.web)} · ${esc(CAFE.insta)}</div></div>`
+        : `<div class="c small-line">Order on WhatsApp ${esc(CAFE.phone)} · ${esc(CAFE.web)} · ${esc(CAFE.insta)}</div>`}
       <div class="thanks">${esc(s.receipt_footer || 'Thank you for visiting KAFEO')}</div>
-      <div class="sm">Order on WhatsApp ${esc(CAFE.phone)}</div>
-      <div class="sm">${esc(CAFE.web)} · ${esc(CAFE.insta)}</div>
-    </div>
+      ${barcodeSvg(invoiceNo(o))}
+      <div class="c inv">${invoiceNo(o)}</div>
+      <div class="c powered">${inclusive ? 'Prices include sales tax · ' : ''}Printed ${fmtDate(new Date())} ${fmtTime(new Date())}</div>
+    </footer>
   </div>`;
 }
 
-// Kitchen order ticket — no prices, big text. opts: { station: 'kitchen'|'bar'|null, onlyNew }
+// Kitchen order ticket — no prices, big text, tick boxes. opts: { station, onlyNew }
 function kotHtml(o, opts = {}) {
   let items = o.items.filter((l) => !opts.station || l.station === opts.station);
   if (opts.onlyNew) items = items.filter((l) => l.added > 0).map((l) => ({ ...l, qty: l.added }));
   if (!items.length) return '';
   const label = opts.station === 'bar' ? 'BAR / COFFEE' : 'KITCHEN';
   return `<div class="slip kot">
-    <div class="kot-head"><span>${label}</span><span>#${o.id}</span></div>
-    ${opts.onlyNew ? '<div class="kot-addon">ADD-ON · NEW ITEMS ONLY</div>' : ''}
-    <div class="kot-where">${whereText(o)}${o.type !== 'dine' && o.customer_name ? `<div class="kot-cust">${esc(o.customer_name)}</div>` : ''}</div>
-    <div class="r sm"><span>${fmtTime(new Date())}</span><span>${o.meta?.by ? 'By ' + esc(o.meta.by) : ''}</span></div>
-    <div class="kot-items">${items.map((l) => `<div class="ki"><b>${l.qty}</b><span>${esc(l.name)}${l.note ? `<i>» ${esc(l.note)}</i>` : ''}</span></div>`).join('')}</div>
-    ${o.notes ? `<div class="kot-note">NOTE: ${esc(o.notes)}</div>` : ''}
-    ${o.reward && !opts.onlyNew && opts.station !== 'bar' ? `<div class="kot-note">FREE: ${esc(o.reward)}</div>` : ''}
-    <div class="c sm">${items.reduce((a, l) => a + l.qty, 0)} item(s)</div>
+    <div class="kot-top"><span>KAFEO</span><span>KITCHEN ORDER TICKET</span></div>
+    <div class="kot-head"><span>${label}</span><span>KOT #${o.id}</span></div>
+    ${opts.onlyNew ? '<div class="kot-addon">★ ADD-ON · NEW ITEMS ONLY ★</div>' : ''}
+    <div class="kot-where">${whereText(o)}</div>
+    ${o.type !== 'dine' && o.customer_name ? `<div class="kot-cust">${esc(o.customer_name)}</div>` : ''}
+    <div class="kot-meta"><span>${fmtTime(new Date())}</span><span>${o.meta?.by ? 'By ' + esc(o.meta.by) : ''}</span></div>
+    <table class="kot-items"><tbody>${items.map((l) => `<tr><td class="q">${l.qty}</td><td>${esc(l.name)}${l.note ? `<small>» ${esc(l.note)}</small>` : ''}</td><td class="tick"><span></span></td></tr>`).join('')}</tbody></table>
+    ${o.notes ? `<div class="kot-note"><b>ORDER NOTE</b><br>${esc(o.notes)}</div>` : ''}
+    ${o.reward && !opts.onlyNew && opts.station !== 'bar' ? `<div class="kot-note"><b>COMPLIMENTARY</b><br>${esc(o.reward)}</div>` : ''}
+    <div class="kot-foot"><span>${items.reduce((a, l) => a + l.qty, 0)} item(s)</span><span>${fmtDate(new Date())}</span></div>
   </div>`;
 }
 function kotSlips(o, onlyNew) {
@@ -1330,7 +1405,12 @@ async function customerFor(o) {
   if (!o.customer_phone || S.settings.receipt_loyalty === false) return null;
   try { return await api.getCustomer(o.customer_phone); } catch { return null; }
 }
-async function printReceipt(o, opts = {}) { printHtml(receiptHtml(o, { ...opts, customer: await customerFor(o) })); }
+const waOrderLink = () => 'https://wa.me/92' + cleanPhone(CAFE.phone).slice(1);
+async function fullReceipt(o, opts = {}) {
+  const [customer, qr] = await Promise.all([customerFor(o), qrSvg(waOrderLink())]);
+  return receiptHtml(o, { ...opts, customer, qr });
+}
+async function printReceipt(o, opts = {}) { printHtml(await fullReceipt(o, opts)); }
 function printKot(o, onlyNew = false) {
   const slips = kotSlips(o, onlyNew);
   if (!slips.length) return toast('Nothing new to send to the kitchen');
@@ -1340,13 +1420,13 @@ function printKot(o, onlyNew = false) {
 async function printAfterSave(o, { kot, onlyNew, receipt }) {
   const parts = [];
   if (kot && S.settings.kot_auto !== false) parts.push(...kotSlips(o, onlyNew));
-  if (receipt) parts.push(receiptHtml(o, { customer: await customerFor(o) }));
+  if (receipt) parts.push(await fullReceipt(o));
   printHtml(parts.join(''));
 }
 function printZ() {
   const r = summarize(S.today);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
-  printHtml(`<div class="rcpt"><div class="c"><div class="brand">KAFEO</div><div>Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
+  printHtml(`<div class="slip rcpt"><div class="c">${LOGO_SVG}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
     <div class="r big"><span>Net sales</span><span>${num(r.net)}</span></div>
     <div class="r"><span>Paid orders</span><span>${r.orders}</span></div>
     <div class="r"><span>Discounts</span><span>${num(r.discounts)}</span></div>
@@ -1526,7 +1606,7 @@ const ACT = {
       tax: 0, tax_rate: 0, delivery_fee: 0, round_off: 0, total: 4228, payment: 'Cash', paid: true, cash_received: 5000, change_due: 772,
       reward: 'Free dessert', status: 'done', meta: { by: S.me.profile.name, discount: { scope: 'bill', type: 'pct', value: 10 } }
     };
-    if (d.v === 'kot') printKot(sample); else printHtml(receiptHtml(sample, { customer: { stamps: 3 } }));
+    if (d.v === 'kot') printKot(sample); else qrSvg(waOrderLink()).then((qr) => printHtml(receiptHtml(sample, { customer: { stamps: 3 }, qr })));
   },
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
