@@ -79,7 +79,8 @@ async function shrinkImage(file) {
 }
 
 const ROUTES = [
-  { id: 'order', label: 'Order', roles: ['owner', 'cashier'] },
+  { id: 'order', label: 'New order', roles: ['owner', 'cashier'], icon: 'order' },
+  { id: 'orders', label: 'Orders', roles: ['owner', 'cashier'], icon: 'bills' },
   { id: 'kitchen', label: 'Kitchen', roles: ['owner', 'cashier', 'kitchen'] },
   { id: 'delivery', label: 'Delivery', roles: ['owner', 'cashier', 'rider'] },
   { id: 'customers', label: 'Loyalty', roles: ['owner', 'cashier'] },
@@ -95,7 +96,7 @@ const S = {
   // order screen
   cat: null, q: '', cart: [], type: 'dine', table: '', phone: '', custName: '', address: '', notes: '',
   discount: null, serviceOn: true, feeOverride: null, customer: null, editing: null,
-  billsOpen: false, billsTab: 'open',
+  ordersTab: 'open', ordersFilter: 'all',
   m: null,        // state of the open pop-up
   station: 'all',
   rep: { range: 'today', orders: [], loaded: false },
@@ -210,10 +211,11 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(() => run(async () => {
     await refreshOrders();
     checkNewOrders();
-    if (S.route === 'order') { renderBillsBadge(); if (S.billsOpen) renderDrawer(); }
+    renderBillsBadge();
+    if (S.route === 'order') { /* summary unaffected */ }
     else if (S.route === 'reports' && S.rep.range === 'today') { await loadReport(); renderScreen(); }
     else if (S.route === 'customers' && S.cs.sel) { await selectCustomer(S.cs.sel.phone, true); }
-    else rerenderIf(['kitchen', 'delivery']);
+    else rerenderIf(['kitchen', 'delivery', 'orders']);
   }), 250);
 }
 function checkNewOrders() {
@@ -245,13 +247,12 @@ function routeFromHash() {
 window.addEventListener('hashchange', () => {
   if (!S.me?.profile) return;
   routeFromHash();
-  S.billsOpen = false;
   renderShell();
 });
 
 function renderShell() {
   const links = ROUTES.filter((r) => canSee(r.id)).map((r) =>
-    `<a href="#${r.id}" class="${S.route === r.id ? 'on' : ''}" ${S.route === r.id ? 'aria-current="page"' : ''}>${icon(r.id)}${r.label}</a>`).join('');
+    `<a href="#${r.id}" class="${S.route === r.id ? 'on' : ''}" ${S.route === r.id ? 'aria-current="page"' : ''}>${icon(r.icon || r.id)}${r.label}${r.id === 'orders' ? '<b class="rail-badge" id="rail-orders"></b>' : ''}</a>`).join('');
   $('#app').innerHTML = `
   <div class="shell">
     <nav class="rail" aria-label="POS sections">
@@ -266,7 +267,6 @@ function renderShell() {
       <div id="screen"></div>
     </div>
   </div>
-  <div id="drawer"></div>
   <dialog id="dlg" aria-labelledby="dlg-title"></dialog>`;
   $('#dlg').addEventListener('close', () => {
     const kind = S.m?.kind;
@@ -275,6 +275,7 @@ function renderShell() {
   });
   renderLiveDot();
   renderScreen();
+  renderBillsBadge();
 }
 function renderLiveDot() {
   const el = $('#live-dot');
@@ -285,7 +286,7 @@ function renderLiveDot() {
 function renderScreen() {
   const el = $('#screen');
   if (!el) return;
-  const map = { order: renderOrder, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
+  const map = { order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
   (map[S.route] || renderOrder)(el);
 }
 
@@ -334,16 +335,18 @@ function renderOrder(el) {
     <div class="toolbar">
       <label class="search">${icon('search', 18)}<span class="sr">Search menu</span>
         <input data-bind="q" type="search" placeholder="Search menu… e.g. zinger, latte" value="${esc(S.q)}" autocomplete="off"></label>
-      <button type="button" class="tool" data-act="bills" data-tab="open">${icon('bills', 20)}<span>Open bills</span><b class="badge" id="bills-badge">0</b></button>
-      <button type="button" class="tool" data-act="bills" data-tab="paid">${icon('print', 20)}<span>Today's orders</span></button>
+      <a class="tool" href="#orders">${icon('bills', 20)}<span>Running orders</span><b class="badge" id="bills-badge">0</b></a>
     </div>
     <div class="grid" id="grid"></div>
   </section>
   <aside class="sum-panel" aria-label="Order summary" id="summary"></aside>`;
   renderCats(); renderGrid(); renderSummary(); renderBillsBadge();
-  if (S.billsOpen) renderDrawer();
 }
-function renderBillsBadge() { const b = $('#bills-badge'); if (b) { const n = unpaidBills().length; b.textContent = n; b.classList.toggle('zero', !n); } }
+function renderBillsBadge() {
+  const n = unpaidBills().length;
+  const b = $('#bills-badge'); if (b) { b.textContent = n; b.classList.toggle('zero', !n); }
+  const r = $('#rail-orders'); if (r) { r.textContent = n || ''; r.classList.toggle('hidden', !n); }
+}
 
 function renderCats() {
   const el = $('#cats'); if (!el) return;
@@ -436,7 +439,7 @@ function renderSummary() {
       </dl>
       ${reward ? `<div class="reward">${icon('star', 16)} Buy More, Save More: <b>${esc(reward)}</b></div>` : ''}
       <div class="go">
-        <button type="button" class="btn btn-dark btn-lg" data-act="saveOrder" ${S.cart.length && !S.busy ? '' : 'disabled'}>${S.editing ? 'Update order' : 'Save order'}<small>${S.type === 'deliv' ? 'cash on delivery' : 'send to kitchen · pay later'}</small></button>
+        <button type="button" class="btn btn-dark btn-lg" data-act="saveOrder" ${S.cart.length && !S.busy ? '' : 'disabled'}>${S.editing ? 'Update order' : 'Add order'}<small>${S.type === 'deliv' ? 'cash on delivery' : 'pay after food'}</small></button>
         <button type="button" class="btn btn-primary btn-lg" data-act="payNow" ${S.cart.length && !S.busy ? '' : 'disabled'}>Pay ${fmt(bill.total)}<small>${S.editing ? 'update & take payment' : 'take payment now'}</small></button>
       </div>
     </div>`;
@@ -787,46 +790,77 @@ async function completePayment() {
   else row = await saveOrder(m.method, extra);
   if (!row) { if (btn) btn.disabled = false; return; }
   closeModal();
-  if (S.route === 'order') { renderBillsBadge(); if (S.billsOpen) renderDrawer(); } else renderScreen();
+  renderBillsBadge();
+  if (S.route !== 'order') renderScreen();
   toast(`Order #${row.id} paid by ${row.payment}${row.change_due ? ` · change ${fmt(row.change_due)}` : ''}`, { action: { label: 'Print receipt', fn: () => printReceipt(row) } });
   if (print) printReceipt(row);
 }
 
-// ---------- open bills drawer ----------
-function renderDrawer() {
-  const el = $('#drawer'); if (!el) return;
-  if (!S.billsOpen) { el.innerHTML = ''; return; }
+// =====================================================================
+// ORDERS — running bills (pay after food) + paid today
+// =====================================================================
+const whereOf = (o) => o.type === 'dine' ? `Table ${esc(o.table_no)}` : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + esc(o.customer_name) : ''}`;
+function renderOrders(el) {
+  el.className = 'screen';
   const bills = unpaidBills();
   const paidToday = S.today.filter((o) => o.paid && o.status !== 'cancelled');
-  const where = (o) => o.type === 'dine' ? `Table ${esc(o.table_no)}` : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + esc(o.customer_name) : ''}`;
+  const f = S.ordersFilter;
+  const shown = bills.filter((o) => f === 'all' || o.type === f);
+  const due = bills.reduce((a, o) => a + Number(o.total), 0);
+  const byTable = new Map();
+  bills.filter((o) => o.type === 'dine').forEach((o) => { const t = byTable.get(o.table_no) || []; t.push(o); byTable.set(o.table_no, t); });
+  const counts = { all: bills.length, dine: 0, take: 0, deliv: 0 };
+  bills.forEach((o) => { counts[o.type]++; });
+  const kitchenTag = (o) => {
+    const map = { new: ['In queue', ''], preparing: ['Preparing', 'warn'], ready: ['Ready to serve', 'ok'], out: ['Out for delivery', ''], done: ['Served', 'ok'] };
+    const [t, c] = map[o.status] || [STATUS_LABEL[o.status], ''];
+    return `<span class="tag ${c}">${t}</span>`;
+  };
   el.innerHTML = `
-  <div class="drawer-bg" data-act="closeBills">
-    <section class="drawer" role="dialog" aria-modal="true" aria-label="Bills" data-stop="1">
-      <div class="drawer-head">
-        <div class="seg" style="flex:1"><button type="button" class="${S.billsTab === 'open' ? 'on' : ''}" data-act="billsTab" data-v="open">Open bills (${bills.length})</button>
-          <button type="button" class="${S.billsTab === 'paid' ? 'on' : ''}" data-act="billsTab" data-v="paid">Paid today (${paidToday.length})</button></div>
-        <button type="button" class="icon-btn" data-act="closeBills" aria-label="Close">${icon('x', 20)}</button>
-      </div>
-      <div class="drawer-body">
-        ${S.billsTab === 'open' ? (bills.length ? bills.map((o) => `
-          <div class="bill">
-            <div class="row"><b style="font-size:18px">#${o.id}</b><span class="tag">${where(o)}</span><span class="tag ${o.status === 'done' ? 'ok' : ''}">${STATUS_LABEL[o.status]}</span><span class="grow"></span><b style="font-size:18px">${fmt(o.total)}</b></div>
-            <div class="items">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}${o.discount_label ? ` · <span class="ok-text">discount ${esc(o.discount_label)}</span>` : ''}</div>
-            <div class="row wrap">
-              <button type="button" class="btn btn-primary" data-act="payOpen" data-id="${o.id}">Take payment</button>
-              <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items / edit</button>
-              <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
-              <span class="grow muted small">${minutesSince(o.created_at)} min ago</span>
-              ${isOwner() ? `<button type="button" class="btn btn-sm btn-danger" data-act="cancelOrder" data-id="${o.id}">Cancel</button>` : ''}
-            </div>
-          </div>`).join('') : '<div class="empty">No unpaid bills.</div>')
-        : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Where</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
-          <tr><td>#${o.id}<div class="muted small">${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div></td><td>${where(o)}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
-          <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty">Nothing paid yet today.</div>')}
-      </div>
+    <div class="screen-head">
+      <div><h1>Orders</h1><div class="muted">Customers who pay after their food. Add items any time, take payment when they’re done.</div></div>
+      <span class="grow"></span>
+      <div class="kpi"><div class="l">Running bills</div><div class="v">${bills.length}</div></div>
+      <div class="kpi"><div class="l">Waiting to be paid</div><div class="v">${fmt(due)}</div></div>
+      <a class="btn btn-primary btn-lg" href="#order">+ New order</a>
+    </div>
+    <div class="seg" role="tablist" style="max-width:420px">
+      <button type="button" class="${S.ordersTab === 'open' ? 'on' : ''}" data-act="ordersTab" data-v="open">Running (${bills.length})</button>
+      <button type="button" class="${S.ordersTab === 'paid' ? 'on' : ''}" data-act="ordersTab" data-v="paid">Paid today (${paidToday.length})</button>
+    </div>
+    ${S.ordersTab === 'open' ? `
+    <section class="panel">
+      <div class="row" style="margin-bottom:12px"><h2 style="margin:0">Tables</h2><span class="grow"></span>
+        <span class="legend"><i class="free"></i>Free</span><span class="legend"><i class="busy"></i>Has a bill</span></div>
+      <div class="tables-map">${(S.settings.tables || []).map((t) => {
+        const list = byTable.get(t) || [];
+        const amt = list.reduce((a, o) => a + Number(o.total), 0);
+        return list.length
+          ? `<button type="button" class="tmap busy" data-act="tableBill" data-v="${esc(t)}"><b>${esc(t)}</b><span>${fmt(amt)}</span><small>${minutesSince(list[0].created_at)} min · #${list.map((o) => o.id).join(', #')}</small></button>`
+          : `<button type="button" class="tmap" data-act="tableNew" data-v="${esc(t)}"><b>${esc(t)}</b><span>Free</span><small>Tap to start order</small></button>`;
+      }).join('')}</div>
     </section>
-  </div>`;
+    <div class="row wrap">${[['all', 'All'], ['dine', 'Dine-in'], ['take', 'Takeaway'], ['deliv', 'Delivery']].map(([v, l]) =>
+      `<button type="button" class="pill ${f === v ? 'on' : ''}" aria-pressed="${f === v}" data-act="ordersFilter" data-v="${v}">${l} · ${counts[v]}</button>`).join('')}</div>
+    <div class="bills-grid">${shown.length ? shown.map((o) => `
+      <article class="bill" id="bill-${o.id}">
+        <div class="row"><b class="bill-where">${whereOf(o)}</b><span class="grow"></span>${kitchenTag(o)}</div>
+        <div class="row muted small"><span>Order #${o.id}</span><span>·</span><span>${minutesSince(o.created_at)} min ago</span>${o.meta?.by ? `<span>·</span><span>${esc(o.meta.by)}</span>` : ''}</div>
+        <ul class="bill-items">${o.items.map((l) => `<li><span>${l.qty}× ${esc(l.name)}${l.note ? ` <em>${esc(l.note)}</em>` : ''}</span><span>${num(l.price * l.qty)}</span></li>`).join('')}</ul>
+        ${o.discount_label ? `<div class="small ok-text">Discount: ${esc(o.discount_label)} (−${fmt(o.discount)})</div>` : ''}
+        <div class="bill-total"><span>Total</span><b>${fmt(o.total)}</b></div>
+        <div class="bill-actions">
+          <button type="button" class="btn btn-primary btn-lg" data-act="payOpen" data-id="${o.id}">Take payment</button>
+          <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items</button>
+          <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
+          ${isOwner() ? `<button type="button" class="btn btn-danger" data-act="cancelOrder" data-id="${o.id}" aria-label="Cancel order ${o.id}">${icon('x', 18)}</button>` : ''}
+        </div>
+      </article>`).join('') : `<div class="empty panel">No running ${f === 'all' ? '' : TYPE_LABEL[f].toLowerCase() + ' '}orders. Use <b>+ New order</b> → add items → <b>Add order</b>.</div>`}</div>`
+    : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Where</th><th>Items</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
+        <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${whereOf(o)}</td>
+        <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
+        <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty panel">Nothing paid yet today.</div>')}`;
 }
 
 // =====================================================================
@@ -1289,7 +1323,7 @@ const ACT = {
   saveOrder: () => run(async () => {
     const wasEdit = !!S.editing;
     const row = await saveOrder(null);
-    if (row) toast(wasEdit ? `Order #${row.id} updated` : `Order #${row.id} sent to kitchen`, { action: { label: 'Print bill', fn: () => printReceipt(row) } });
+    if (row) toast(wasEdit ? `Order #${row.id} updated — customer pays from Orders` : `Order #${row.id} added — customer pays after food from Orders`, { action: { label: 'Print bill', fn: () => printReceipt(row) } });
   }),
   payNow: () => openPayment(null),
 
@@ -1324,20 +1358,29 @@ const ACT = {
   pComplete: () => completePayment(),
 
   // bills drawer
-  bills: (d) => { S.billsOpen = true; S.billsTab = d.tab || 'open'; renderDrawer(); },
-  billsTab: (d) => { S.billsTab = d.v; renderDrawer(); },
-  closeBills: (d, el, e) => { if (e.target.closest('[data-stop]') && !el.matches('button')) return; S.billsOpen = false; renderDrawer(); },
+  ordersTab: (d) => { S.ordersTab = d.v; renderScreen(); },
+  ordersFilter: (d) => { S.ordersFilter = d.v; renderScreen(); },
+  tableNew: (d) => {
+    if (S.cart.length && !confirm('There are items on the New order screen. Start this table and keep them?')) return;
+    if (S.editing) resetOrder();
+    S.type = 'dine'; S.table = d.v; location.hash = '#order';
+  },
+  tableBill: (d) => {
+    const o = unpaidBills().find((x) => x.type === 'dine' && x.table_no === d.v);
+    if (o) { S.ordersFilter = 'all'; renderScreen(); document.getElementById('bill-' + o.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  },
   payOpen: (d) => { const o = findOrder(Number(d.id)); if (o) openPayment(o); },
   editOpen: (d) => {
     const o = findOrder(Number(d.id)); if (!o) return;
     if (S.cart.length && !S.editing && !confirm('Replace the order on screen with this bill?')) return;
-    loadForEdit(o); S.billsOpen = false; renderDrawer(); renderSummary(); renderGrid();
+    loadForEdit(o);
+    if (S.route !== 'order') location.hash = '#order'; else { renderSummary(); renderGrid(); }
     toast(`Editing order #${o.id} — add items, then Update or Pay`);
   },
   print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printReceipt(o); }),
   cancelOrder: (d) => {
     if (!confirm(`Cancel order #${d.id}? It stays in reports as cancelled.`)) return;
-    run(async () => { await api.updateOrder(Number(d.id), { status: 'cancelled' }); await refreshOrders(); renderBillsBadge(); renderDrawer(); toast(`Order #${d.id} cancelled`); });
+    run(async () => { await api.updateOrder(Number(d.id), { status: 'cancelled' }); await refreshOrders(); renderBillsBadge(); renderScreen(); toast(`Order #${d.id} cancelled`); });
   },
 
   // kitchen & delivery
@@ -1462,7 +1505,6 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const fn = ACT[el.dataset.act];
   if (!fn) return;
-  if (el.dataset.act === 'closeBills' && el.classList.contains('drawer-bg') && e.target.closest('[data-stop]')) return;
   if (el.disabled) return;
   e.preventDefault();
   fn(el.dataset, el, e);
@@ -1510,6 +1552,5 @@ document.addEventListener('submit', (e) => {
   SUBMIT[form.dataset.submit]?.(form);
 });
 // Keyboard: Esc closes the bills drawer (the pop-up closes itself).
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.billsOpen) { S.billsOpen = false; renderDrawer(); } });
 
 boot();

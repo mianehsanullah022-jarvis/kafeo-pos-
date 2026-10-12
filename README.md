@@ -97,8 +97,13 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 - Tap an item in the summary to change quantity or add a note for the kitchen (*no onions, extra spicy…*).
 - **Discount** opens the discount section: whole bill or item-wise, percentage or fixed rupees, quick buttons, a reason (bank/card offer with bank name, friend & family, staff meal…), and a live preview of the new total. Cashiers are limited to the % set in Settings; the owner has no limit. Loyalty rewards apply with one tap when a customer's card is full.
 - **Service charge** (dine-in) can be switched on/off per order. **Delivery fee** can be changed per order.
-- **Save order** = send to kitchen, pay later. **Pay** = payment screen: choose Cash / Card / JazzCash / Easypaisa / Bank transfer — tax updates for the method — enter cash received and it shows the change to return. Receipt prints automatically (can be switched off).
-- **Open bills** — take payment, print a bill, or **Add items / edit** an existing bill (new items are flagged “+1 NEW” in the kitchen).
+- **Add order** = send to kitchen, customer pays after food. **Pay** = payment screen: choose Cash / Card / JazzCash / Easypaisa / Bank transfer — tax updates for the method — enter cash received and it shows the change to return. Receipt prints automatically (can be switched off).
+
+**Orders (running bills)**
+- Every order added with **Add order** waits here until it's paid — the red number on the **Orders** button shows how many.
+- The **table map** shows which tables have a bill and how much; tap a free table to start its order, tap a busy one to jump to its bill.
+- Each bill: **Take payment**, **Add items** (new items are flagged “+1 NEW” in the kitchen), **Print bill**. The owner can also cancel.
+- **Paid today** lists finished bills for reprinting receipts.
 
 **Kitchen** — new orders beep. *Start preparing → Mark ready → Served / Picked up.* Tickets turn red after 15 minutes. Filter by Kitchen or Bar & coffee. Tap the screen once after opening it so the browser allows the beep.
 
