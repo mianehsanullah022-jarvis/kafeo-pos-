@@ -172,6 +172,7 @@ async function startApp() {
   unsub = api.subscribe(onLive);
   routeFromHash();
   renderShell();
+  setTimeout(() => { logoImg(); }, 1500);
 }
 
 async function loadAll() {
@@ -1259,6 +1260,47 @@ const LOGO_SVG = `<svg class="logo" viewBox="0 0 260 64" xmlns="http://www.w3.or
     <path d="M12 0c-2 3 2 4 0 7 M22 0c-2 3 2 4 0 7"></path>
   </g></svg>`;
 
+// The logo as a solid picture (PNG). Thermal printer drivers sometimes drop thin vector
+// lines — a picture always prints, so the coffee cup can't go missing.
+let logoPng = null;
+async function logoImg() {
+  if (logoPng) return `<img class="logo" src="${logoPng}" alt="KAFEO">`;
+  try {
+    try { await document.fonts?.load('700 200px Fraunces'); } catch { /* use fallback serif */ }
+    const W = 1040, H = 256, c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#000'; g.strokeStyle = '#000';
+    g.font = '700 210px Fraunces, Georgia, "Times New Roman", serif';
+    g.textBaseline = 'alphabetic';
+    const word = 'KAFE', track = 18;
+    const widths = [...word].map((ch) => g.measureText(ch).width);
+    const textW = widths.reduce((a, w) => a + w, 0) + track * (word.length - 1);
+    const cupW = 190, gap = 44, total = textW + gap + cupW;
+    let x = (W - total) / 2;
+    const base = 205;
+    [...word].forEach((ch, i) => { g.fillText(ch, x, base); x += widths[i] + track; });
+    // coffee cup — thick strokes, sized to the capital letters
+    const cx = x - track + gap, top = 62, cupH = 143;
+    g.lineWidth = 22; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(cx, top + 26);
+    g.lineTo(cx + 140, top + 26);
+    g.lineTo(cx + 140, top + 26 + 58);
+    g.bezierCurveTo(cx + 140, top + cupH, cx + 108, top + cupH, cx + 70, top + cupH);
+    g.bezierCurveTo(cx + 32, top + cupH, cx, top + cupH, cx, top + 26 + 58);
+    g.closePath(); g.stroke();
+    g.beginPath(); g.arc(cx + 150, top + 70, 28, -Math.PI / 2, Math.PI / 2); g.stroke();   // handle
+    g.lineWidth = 14;
+    [cx + 45, cx + 95].forEach((sx) => {                                                    // steam
+      g.beginPath(); g.moveTo(sx, top + 2); g.bezierCurveTo(sx - 14, top - 18, sx + 14, top - 30, sx, top - 50); g.stroke();
+    });
+    logoPng = c.toDataURL('image/png');
+    return `<img class="logo" src="${logoPng}" alt="KAFEO">`;
+  } catch { return LOGO_SVG; }
+}
+
 // Rupees in words, Pakistani style (thousand / lakh / crore).
 function amountInWords(n) {
   n = Math.round(Math.abs(Number(n) || 0));
@@ -1329,7 +1371,7 @@ function receiptHtml(o, opts = {}) {
   const doc = o.status === 'cancelled' ? 'CANCELLED' : !o.paid ? 'PRE-BILL' : Number(o.tax) > 0 ? 'SALES TAX INVOICE' : 'SALES RECEIPT';
   return `<div class="slip rcpt">
     <header class="c">
-      ${LOGO_SVG}
+      ${opts.logo || LOGO_SVG}
       <div class="tagline">COFFEE · FOOD · MOTIVATION</div>
       <div class="addr">${esc(CAFE.address)}<br>Tel / WhatsApp ${esc(CAFE.phone)}${s.tax_number ? `<br>PRA / NTN: ${esc(s.tax_number)}` : ''}</div>
     </header>
@@ -1407,8 +1449,8 @@ async function customerFor(o) {
 }
 const waOrderLink = () => 'https://wa.me/92' + cleanPhone(CAFE.phone).slice(1);
 async function fullReceipt(o, opts = {}) {
-  const [customer, qr] = await Promise.all([customerFor(o), qrSvg(waOrderLink())]);
-  return receiptHtml(o, { ...opts, customer, qr });
+  const [customer, qr, logo] = await Promise.all([customerFor(o), qrSvg(waOrderLink()), logoImg()]);
+  return receiptHtml(o, { ...opts, customer, qr, logo });
 }
 async function printReceipt(o, opts = {}) { printHtml(await fullReceipt(o, opts)); }
 function printKot(o, onlyNew = false) {
@@ -1423,10 +1465,11 @@ async function printAfterSave(o, { kot, onlyNew, receipt }) {
   if (receipt) parts.push(await fullReceipt(o));
   printHtml(parts.join(''));
 }
-function printZ() {
+async function printZ() {
+  const logo = await logoImg();
   const r = summarize(S.today);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
-  printHtml(`<div class="slip rcpt"><div class="c">${LOGO_SVG}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
+  printHtml(`<div class="slip rcpt"><div class="c">${logo}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
     <div class="r big"><span>Net sales</span><span>${num(r.net)}</span></div>
     <div class="r"><span>Paid orders</span><span>${r.orders}</span></div>
     <div class="r"><span>Discounts</span><span>${num(r.discounts)}</span></div>
@@ -1606,7 +1649,7 @@ const ACT = {
       tax: 0, tax_rate: 0, delivery_fee: 0, round_off: 0, total: 4228, payment: 'Cash', paid: true, cash_received: 5000, change_due: 772,
       reward: 'Free dessert', status: 'done', meta: { by: S.me.profile.name, discount: { scope: 'bill', type: 'pct', value: 10 } }
     };
-    if (d.v === 'kot') printKot(sample); else qrSvg(waOrderLink()).then((qr) => printHtml(receiptHtml(sample, { customer: { stamps: 3 }, qr })));
+    if (d.v === 'kot') printKot(sample); else Promise.all([qrSvg(waOrderLink()), logoImg()]).then(([qr, logo]) => printHtml(receiptHtml(sample, { customer: { stamps: 3 }, qr, logo })));
   },
   resetDemo: () => { if (confirm('Clear all demo orders and customers?')) { api.resetDemo(); location.reload(); } }
 };
