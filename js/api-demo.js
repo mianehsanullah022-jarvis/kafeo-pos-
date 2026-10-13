@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2150';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2204';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -115,6 +115,9 @@ export function createDemoApi() {
       notify('stock'); return clone(db.stock.find((x) => x.id === it.id));
     },
     async addStockItems(rows) { const out = []; for (const r of rows) out.push(await this.saveStockItem({ ...r })); return out; },
+    async upsertStockItems(rows) { const out = []; for (const r of rows) out.push(await this.saveStockItem({ ...r })); return out; },
+    async deleteStockItems(ids) { load(); db.stock = (db.stock || []).filter((x) => !ids.includes(x.id)); db.recipes = (db.recipes || []).filter((r) => !ids.includes(r.stock_item_id)); notify('stock'); },
+    async replaceAllRecipes(rows) { load(); db.recipes = rows.map((r) => ({ ...r, id: db.nextRecipe++ })); notify('stock'); },
     async listRecipes() { load(); return clone(db.recipes || []); },
     async saveRecipe(menuItemId, optionKey, rows) {
       load(); db.recipes = (db.recipes || []).filter((r) => !(r.menu_item_id === menuItemId && r.option_key === optionKey));

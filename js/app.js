@@ -1,18 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2150';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2150';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2150';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2204';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2204';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2204';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-2150';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2150';
-import { pdfBlob } from './pdf.js?v=2026.10.13-2150';
+} from './logic.js?v=2026.10.13-2204';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2204';
+import { pdfBlob } from './pdf.js?v=2026.10.13-2204';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2204';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-2150')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-2204')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1126,6 +1127,7 @@ function renderStockTab(el) {
       ${[['all', 'All'], ['low', 'Low & out'], ['out', 'Out']].map(([v, l]) => `<button type="button" class="pill ${f === v ? 'on' : ''}" data-act="invFilter" data-v="${v}">${l}</button>`).join('')}
       <span class="grow"></span>
       ${isOwner() && !S.inv.stock.length ? '<button type="button" class="btn" data-act="invStarter">Add starter list</button>' : ''}
+      ${isOwner() ? '<button type="button" class="btn" data-act="invKafeo">Load KAFEO stock &amp; recipes</button>' : ''}
       ${isOwner() ? '<button type="button" class="btn btn-primary" data-act="invEdit" data-id="">+ Add stock item</button>' : ''}
     </div>
     ${list.length ? cats.map((cat) => `
@@ -2139,6 +2141,51 @@ const ACT = {
   invStarter: () => {
     if (!confirm(`Add ${STARTER_STOCK.length} common café stock items (all at zero)? You can edit or hide any of them.`)) return;
     run(async () => { await api.addStockItems(STARTER_STOCK.map(([name, category, unit]) => ({ name, category, unit }))); await loadInventory(); renderScreen(); toast('Starter list added — now enter what you have with Count'); });
+  },
+  // Loads KAFEO's full stock list (rate list + kitchen-made items) and every Recipe Book recipe.
+  // Items that already exist (same name) keep their stock; old unused items with no history are removed.
+  invKafeo: () => {
+    if (!confirm(`Load the full KAFEO stock list (${KAFEO_STOCK.length} items) and all ${Object.keys(KAFEO_RECIPES).length} menu recipes?\n\nStock you already entered is kept. All recipes are replaced with the KAFEO Recipe Book.`)) return;
+    run(async () => {
+      toast('Loading KAFEO stock list…');
+      await loadInventory();
+      const old = S.inv.stock, byName = new Map(old.map((it) => [it.name.toLowerCase(), it]));
+      const moved = new Set((await api.listMoves(10000)).map((m) => m.stock_item_id));
+      const wanted = new Set(KAFEO_STOCK.map(([n]) => n.toLowerCase()));
+      // 1) Coke and Sprite as two menu items (stock must know which one was sold)
+      const coke = S.menu.items.find((i) => i.id === 'k12');
+      if (coke) {
+        const { image_url, ...base } = coke;
+        await api.saveMenuItem({ ...base, name: 'Coke', options: DRINK_SIZES });
+        if (!S.menu.items.find((i) => i.id === 'k14')) await api.saveMenuItem({ ...base, id: 'k14', name: 'Sprite', note: '', options: DRINK_SIZES, active: true });
+        S.menu = await api.loadMenu();
+      }
+      // 2) stock items: update matches, add the rest, remove unused old ones
+      const upd = [], add = [];
+      for (const [name, category, unit, cost, supplier] of KAFEO_STOCK) {
+        const it = byName.get(name.toLowerCase());
+        if (it) upd.push({ id: it.id, name, category, unit, cost: Number(it.cost) > 0 && moved.has(it.id) ? Number(it.cost) : cost, supplier, active: true });
+        else add.push({ name, category, unit, cost, supplier });
+      }
+      await api.upsertStockItems(upd);
+      if (add.length) await api.addStockItems(add);
+      const drop = old.filter((it) => !wanted.has(it.name.toLowerCase()) && !moved.has(it.id) && !Number(it.qty)).map((it) => it.id);
+      const keep = old.filter((it) => !wanted.has(it.name.toLowerCase()) && !drop.includes(it.id));
+      if (keep.length) await api.upsertStockItems(keep.map((it) => ({ id: it.id, name: it.name, category: 'Old list (check)', active: true })));
+      await api.deleteStockItems(drop);
+      // 3) recipes
+      await loadInventory();
+      const idOf = new Map(S.inv.stock.map((it) => [it.name.toLowerCase(), it.id]));
+      const rows = [];
+      for (const [key, lines] of Object.entries(KAFEO_RECIPES)) {
+        const [menu_item_id, option_key] = key.split('|');
+        if (!S.menu.items.find((i) => i.id === menu_item_id)) continue;
+        for (const [name, qty] of lines) { const sid = idOf.get(name.toLowerCase()); if (sid) rows.push({ menu_item_id, option_key, stock_item_id: sid, qty }); }
+      }
+      await api.replaceAllRecipes(rows);
+      await loadInventory(); S.inv.movesLoaded = false; renderScreen();
+      toast(`Done — ${S.inv.stock.length} stock items, ${new Set(rows.map((r) => r.menu_item_id + '|' + r.option_key)).size} recipes loaded`);
+    });
   },
   rCat: (d) => { S.inv.rCat = d.id; S.inv.rItem = null; renderScreen(); },
   rItem: (d) => { S.inv.rItem = d.id; renderScreen(); },

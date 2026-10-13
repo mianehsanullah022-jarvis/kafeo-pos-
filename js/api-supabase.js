@@ -72,6 +72,12 @@ export function createSupabaseApi(url, key) {
     async listStock() { return must(await sb.from('stock_items').select('*').order('category').order('name')); },
     async saveStockItem(it) { return must(await sb.from('stock_items').upsert(it).select().single()); },
     async addStockItems(rows) { return must(await sb.from('stock_items').insert(rows).select()); },
+    async upsertStockItems(rows) { return rows.length ? must(await sb.from('stock_items').upsert(rows).select()) : []; },
+    async deleteStockItems(ids) { if (ids.length) must(await sb.from('stock_items').delete().in('id', ids)); },
+    async replaceAllRecipes(rows) {
+      must(await sb.from('recipes').delete().gt('id', 0));
+      for (let i = 0; i < rows.length; i += 500) must(await sb.from('recipes').insert(rows.slice(i, i + 500)));
+    },
     async listRecipes() { return must(await sb.from('recipes').select('*')); },
     async saveRecipe(menuItemId, optionKey, rows) {
       must(await sb.from('recipes').delete().eq('menu_item_id', menuItemId).eq('option_key', optionKey));
