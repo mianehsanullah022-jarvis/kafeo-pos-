@@ -1,6 +1,6 @@
 // KAFEO Reports Center — every report is built as plain data (title, key figures, tables),
 // then shown on screen, saved as PDF, printed on A4 or thermal, or exported to Excel (CSV).
-import { lineDiscount } from './logic.js?v=2026.10.13-2204';
+import { lineDiscount } from './logic.js?v=2026.10.13-2214';
 
 const n0 = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const rs = (n) => 'Rs ' + n0(n);
