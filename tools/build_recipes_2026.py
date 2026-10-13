@@ -93,7 +93,6 @@ STOCK = {
   'Coco powder': ('Bar', 'g', 2.3, SRC),
   'Karak chai powder': ('Bar', 'g', 2.2, SRC),
   'Cardamom chai powder': ('Bar', 'g', 2.2, SRC),
-  'Kashmiri chai powder': ('Bar', 'g', 2.9, RATE),
   'Tea bag': ('Bar', 'pcs', 15, SRC),
   'Dessert magic': ('Bar', 'g', 1.8, SRC),
   'Chocolate syrup': ('Bar', 'ml', 1.0, SRC),

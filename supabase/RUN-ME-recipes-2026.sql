@@ -77,7 +77,6 @@ insert into public.stock_items (name, category, unit, cost, supplier) values
   ('Coco powder', 'Bar', 'g', 2.3, 'Recipe Sheet 20-06-26'),
   ('Karak chai powder', 'Bar', 'g', 2.2, 'Recipe Sheet 20-06-26'),
   ('Cardamom chai powder', 'Bar', 'g', 2.2, 'Recipe Sheet 20-06-26'),
-  ('Kashmiri chai powder', 'Bar', 'g', 2.9, 'Items Rate List (new)'),
   ('Tea bag', 'Bar', 'pcs', 15, 'Recipe Sheet 20-06-26'),
   ('Dessert magic', 'Bar', 'g', 1.8, 'Recipe Sheet 20-06-26'),
   ('Chocolate syrup', 'Bar', 'ml', 1, 'Recipe Sheet 20-06-26'),
