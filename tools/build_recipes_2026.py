@@ -223,20 +223,23 @@ for pid, base in PIZZA.items():
     for k, word in SIZE.items(): R[(pid, k)] = lines(f'{base} {word}')
 
 # Not on the 2026 sheet
-R[('c12', '')] = {'Kashmiri chai powder': 20, 'Disposable cup': 1, 'Sugar sachet': 2, 'Stirrer': 1}  # same shape as Karak
+# Kashmiri Tea: no recipe on file (Kitchen Recipe Book p.15) - left empty on purpose
 for k in ('345ml', '500ml', '1L', '1.5L'): R[('k12', k)] = {f'Coke/Sprite {k}': 1}
 for k in ('500ml', '1.5L'): R[('k13', k)] = {f'Water {k}': 1}
 for e in ('e1', 'e2', 'e3'): R[(e, '')] = {'Brownie': 1}
 R[('a4', '')] = {'Cheese slice': 1}
 R[('a8', '')] = {'Chicken patty (in-house)': 1}
-# Add-ons: grams worked back from the cost column of "New Menu price 06-02-2026"
-for k, g in zip('SML', (20, 40, 65)):
+# Onion rings: the Kitchen Recipe Book adds 2 ketchup sachets
+R[('f11', '')]['Ketchup sachet'] = 2
+# Add-on portions from the KAFEO Kitchen Recipe Book (Add-on Portions table)
+for k, g in zip('SML', (20, 40, 60)):
     R[('a1', k)] = {'Cheese': g}
     R[('a2', k)] = {'Marinated chicken chunks': g}
 for k, g in zip('SML', (15, 30, 45)): R[('a3', k)] = {'Sausages': g}
-R[('a5', '')] = {'Olives': 8}
-R[('a6', '')] = {'Jalapeno': 9}
-R[('a7', '')] = {'Mushroom': 12}
+R[('a5', '')] = {'Olives': 7}
+R[('a6', '')] = {'Jalapeno': 7}
+R[('a7', '')] = {'Mushroom': 15}
+R[('a9', '')] = {'Marinated chicken fillet': 60}
 R[('a10', '')] = {'Honey mustard sauce': 40}
 R[('a11', '')] = {'Peri peri sauce': 40}
 
