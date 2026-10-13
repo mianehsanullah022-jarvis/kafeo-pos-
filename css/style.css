@@ -151,7 +151,7 @@ a { color: var(--accent); }
 .grid { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-rows: minmax(186px, auto); gap: 14px; align-content: start; }
 .icard { position: relative; height: 100%; width: 100%; font: inherit; color: inherit; cursor: pointer; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 0; display: flex; flex-direction: column; text-align: left; box-shadow: var(--shadow); overflow: hidden; transition: transform .08s, border-color .12s, box-shadow .12s; }
 .icard .pic { display: grid; place-items: center; height: 78px; flex-shrink: 0; }
-.icard .pic.photo { background: var(--line-soft); }
+.icard .pic.photo { display: block; overflow: hidden; background: var(--line-soft); }
 .icard .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .icard .body { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
 .icard .nm { font-weight: 800; font-size: 15px; line-height: 1.25; }

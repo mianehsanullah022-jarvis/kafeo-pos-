@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2220';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2220';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2220';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2236';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2236';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2236';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-2220';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2220';
-import { pdfBlob } from './pdf.js?v=2026.10.13-2220';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2220';
+} from './logic.js?v=2026.10.13-2236';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2236';
+import { pdfBlob } from './pdf.js?v=2026.10.13-2236';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2236';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-2220')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-2236')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -68,9 +68,13 @@ function catLook(catId) {
   const h = [...String(catId)].reduce((a, c) => a + c.charCodeAt(0), 0);
   return [...FALLBACK_LOOK[h % FALLBACK_LOOK.length], 'M5 8h14v11H5z M8 8V5h8v3'];
 }
+// KAFEO product photos that ship with the app (img/menu/<item id>.jpg). A photo uploaded in Menu replaces it.
+const BUNDLED_PHOTOS = new Set(['p1', 'b1', 's1', 's6', 'w5', 'c8']);
+const photoOf = (i) => i.image_url || (BUNDLED_PHOTOS.has(i.id) ? `img/menu/${i.id}.jpg?v=${APP_VERSION}` : '');
 function itemPic(i, cls = 'pic') {
   const [bg, fg, d] = catLook(i.category_id);
-  if (i.image_url) return `<span class="${cls} photo"><img src="${esc(i.image_url)}" alt="" loading="lazy"></span>`;
+  const src = photoOf(i);
+  if (src) return `<span class="${cls} photo"><img src="${esc(src)}" alt="" loading="lazy"></span>`;
   return `<span class="${cls}" style="background:${bg};color:${fg}"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg></span>`;
 }
 // Shrink a photo before upload so cards load fast (max 640px, JPEG).
@@ -1629,7 +1633,7 @@ function renderMenu(el) {
       <tbody>${items.map((i) => `
         <tr data-row="${esc(i.id)}">
           <td><div class="row">${itemPic(i, 'thumb')}
-            <label class="btn btn-sm">${i.image_url ? 'Change' : 'Upload'}<input type="file" accept="image/*" data-photo="${esc(i.id)}" class="sr"></label>
+            <label class="btn btn-sm">${photoOf(i) ? 'Change' : 'Upload'}<input type="file" accept="image/*" data-photo="${esc(i.id)}" class="sr"></label>
             ${i.image_url ? `<button type="button" class="btn btn-sm btn-danger" data-act="removePhoto" data-id="${esc(i.id)}" aria-label="Remove photo">${icon('x', 16)}</button>` : ''}</div></td>
           <td><label class="check"><input type="checkbox" data-f="active" ${i.active ? 'checked' : ''}><span class="sr">Show ${esc(i.name)}</span></label></td>
           <td><input class="input" data-f="name" value="${esc(i.name)}" aria-label="Name" style="min-width:170px"></td>
