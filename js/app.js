@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2214';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2214';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2214';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2220';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2220';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2220';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-2214';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2214';
-import { pdfBlob } from './pdf.js?v=2026.10.13-2214';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2214';
+} from './logic.js?v=2026.10.13-2220';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2220';
+import { pdfBlob } from './pdf.js?v=2026.10.13-2220';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2220';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-2214')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.13-2220')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -44,6 +44,7 @@ const ICON = {
   print: 'M7 9V3h10v6 M7 17H4v-7h16v7h-3 M7 14h10v7H7z',
   check: 'M5 12l5 5 9-10',
   box: 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10',
+  wallet: 'M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z M3 7l11-4 2 4 M16.5 14h.01',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'
 };
 const icon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k]}"></path></svg>`;
@@ -89,6 +90,7 @@ const ROUTES = [
   { id: 'delivery', label: 'Delivery', roles: ['owner', 'cashier', 'rider'] },
   { id: 'customers', label: 'Loyalty', roles: ['owner', 'cashier'] },
   { id: 'inventory', label: 'Stock', roles: ['owner', 'cashier', 'kitchen'], icon: 'box' },
+  { id: 'expenses', label: 'Expenses', roles: ['owner', 'cashier'], icon: 'wallet' },
   { id: 'reports', label: 'Reports', roles: ['owner'] },
   { id: 'menu', label: 'Menu', roles: ['owner'] },
   { id: 'settings', label: 'Settings', roles: ['owner'] }
@@ -107,7 +109,8 @@ const S = {
   rep: { range: 'today', orders: [], loaded: false },
   cs: { q: '', list: [], sel: null, orders: [] },
   inv: { ready: null, stock: [], recipes: [], moves: [], tab: 'stock', q: '', filter: 'all', rCat: null, rItem: null, draft: {}, histKind: 'all', movesLoaded: false },
-  mcat: null
+  mcat: null,
+  ex: null       // expenses screen
 };
 const role = () => S.me?.profile?.role;
 const isOwner = () => role() === 'owner';
@@ -296,7 +299,7 @@ function renderLiveDot() {
 function renderScreen() {
   const el = $('#screen');
   if (!el) return;
-  const map = { inventory: renderInventory, order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
+  const map = { expenses: renderExpenses, inventory: renderInventory, order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
   (map[S.route] || renderOrder)(el);
 }
 
@@ -1015,6 +1018,109 @@ function renderExpenseModal() {
     </div>
     <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Close</button>
       <button type="button" class="btn btn-primary btn-lg" data-act="expSave" ${m.ready ? '' : 'disabled'}>Save expense</button></footer>`);
+}
+
+// =====================================================================
+// EXPENSES — money paid out: add, see by day / category / vendor, edit
+// The vendor ("paid to") is kept at the start of the description as [Vendor] so no database change is needed.
+// =====================================================================
+const exSplit = (d) => { const m = /^\[([^\]]+)\]\s*(.*)$/s.exec(d || ''); return m ? { vendor: m[1], note: m[2] } : { vendor: '', note: d || '' }; };
+const exJoin = (vendor, note) => (vendor.trim() ? `[${vendor.trim()}] ${note.trim()}`.trim() : note.trim());
+const EX_PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['lastMonth', 'Last month']];
+function exBlankForm() {
+  return { amount: '', type: (S.settings.expense_types || [])[0] || 'Other', vendor: '', method: 'Cash', note: '', when: '' };
+}
+function exInit() {
+  if (S.ex) return;
+  const [a, b] = presetRange('today');
+  S.ex = { preset: 'today', from: toLocalInput(a), to: toLocalInput(b), list: [], sales: null, loaded: false, ready: true,
+    form: exBlankForm(), editId: null, cat: 'all', q: '' };
+}
+async function exLoad() {
+  const x = S.ex, from = new Date(x.from), to = new Date(x.to);
+  try { x.list = await api.expensesBetween(from.toISOString(), to.toISOString()); x.ready = true; } catch { x.list = []; x.ready = false; }
+  x.sales = null;
+  if (isOwner()) {
+    try { const os = await api.ordersBetween(from.toISOString(), to.toISOString()); x.sales = os.filter((o) => o.paid && o.status !== 'cancelled').reduce((a, o) => a + Number(o.total || 0), 0); } catch { x.sales = null; }
+  }
+  x.loaded = true;
+}
+function exVendors() {
+  const set = new Set([...(S.settings.expense_vendors || []), ...(S.ex?.list || []).map((e) => exSplit(e.description).vendor).filter(Boolean)]);
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+function exBars(rows, total) {
+  if (!rows.length) return '<div class="muted small">Nothing yet</div>';
+  return `<div class="ex-bars">${rows.map(([k, v, n]) => `<div class="ex-bar"><div class="ex-bar-top"><span>${esc(k)} <span class="muted small">· ${n}</span></span><b>${fmt(v)}</b></div>
+    <div class="ex-track"><i style="width:${Math.max(2, Math.round((v / (total || 1)) * 100))}%"></i></div></div>`).join('')}</div>`;
+}
+function renderExpenses(el) {
+  exInit();
+  el.className = 'screen';
+  const x = S.ex, owner = isOwner();
+  if (!x.loaded) { el.innerHTML = '<div class="empty">Loading expenses…</div>'; run(async () => { await exLoad(); renderScreen(); }); return; }
+  const types = S.settings.expense_types || ['Other'];
+  const all = x.list.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const q = x.q.trim().toLowerCase();
+  const list = all.filter((e) => (x.cat === 'all' || e.type === x.cat) && (!q || `${e.type} ${e.description} ${e.method} ${e.by_name}`.toLowerCase().includes(q)));
+  const total = list.reduce((a, e) => a + Number(e.amount), 0);
+  const cash = list.filter((e) => e.method === 'Cash').reduce((a, e) => a + Number(e.amount), 0);
+  const group = (keyFn) => { const m = new Map(); list.forEach((e) => { const k = keyFn(e) || '—'; const g = m.get(k) || [0, 0]; g[0] += Number(e.amount); g[1]++; m.set(k, g); }); return [...m].map(([k, [v, n]]) => [k, v, n]).sort((a, b) => b[1] - a[1]); };
+  const byCat = group((e) => e.type), byVendor = group((e) => exSplit(e.description).vendor || 'Not given');
+  const days = new Map();
+  list.forEach((e) => { const k = fmtDate(businessDayStart(new Date(e.created_at))); (days.get(k) || days.set(k, []).get(k)).push(e); });
+  const f = x.form, editing = x.editId != null;
+  const rangeTxt = `${rdt(new Date(x.from))} - ${rdt(new Date(x.to))}`;
+  el.innerHTML = `
+    <div class="screen-head"><h1>Expenses</h1><span class="muted">${esc(rangeTxt)}</span></div>
+    ${x.ready ? '' : '<div class="error" style="margin-bottom:12px">Expenses need a one-time database update: run supabase/migrations/005_expenses.sql in Supabase.</div>'}
+    <div class="row wrap" style="margin-bottom:14px">
+      ${EX_PRESETS.filter(([v]) => owner || v === 'today' || v === 'yesterday').map(([v, l]) => `<button type="button" class="pill ${x.preset === v ? 'on' : ''}" data-act="exPreset" data-v="${v}">${l}</button>`).join('')}
+      ${owner ? `<label class="field ex-date">From<input type="datetime-local" data-exr="from" value="${esc(x.from)}"></label>
+      <label class="field ex-date">To<input type="datetime-local" data-exr="to" value="${esc(x.to)}"></label>
+      <span class="grow"></span><button type="button" class="btn" data-act="exPdf">${icon('print', 18)} PDF / print</button>` : ''}
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Total expenses</div><div class="v">${fmt(total)}</div><div class="s">${list.length} ${list.length === 1 ? 'entry' : 'entries'}</div></div>
+      <div class="kpi"><div class="l">Paid in cash</div><div class="v">${fmt(cash)}</div><div class="s">out of the cash drawer</div></div>
+      <div class="kpi"><div class="l">Card / wallet / bank</div><div class="v">${fmt(total - cash)}</div></div>
+      ${owner && x.sales != null ? `<div class="kpi"><div class="l">Sales (paid)</div><div class="v">${fmt(x.sales)}</div></div>
+      <div class="kpi"><div class="l">Sales minus expenses</div><div class="v" style="color:${x.sales - total < 0 ? 'var(--warn)' : 'inherit'}">${fmt(x.sales - total)}</div><div class="s">${x.sales ? Math.round((total / x.sales) * 100) + '% of sales spent' : ''}</div></div>` : ''}
+    </div>
+    <div class="ex-grid">
+      <form class="panel stack ex-form" data-submit="exSave" autocomplete="off">
+        <h2>${editing ? 'Edit expense' : 'Add expense'}</h2>
+        <label class="field">Amount (Rs)<input name="amount" data-ex="amount" type="number" min="1" step="1" inputmode="numeric" value="${esc(f.amount)}" required></label>
+        <div><div class="lbl">Category</div><div class="chips">${types.map((t) => `<button type="button" class="chip-sm ${f.type === t ? 'on' : ''}" data-act="exType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
+        <label class="field">Paid to (vendor / person)<input data-ex="vendor" list="ex-vendors" value="${esc(f.vendor)}" placeholder="e.g. Horeca Solution, Dawn, LESCO"></label>
+        <datalist id="ex-vendors">${exVendors().map((v) => `<option value="${esc(v)}">`).join('')}</datalist>
+        <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${f.method === pm ? 'on' : ''}" data-act="exMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
+        <label class="field">Details<input data-ex="note" value="${esc(f.note)}" placeholder="e.g. 10 kg cheese, bill no. 452"></label>
+        ${owner ? `<label class="field">Date &amp; time <span class="muted small">(leave empty for now)</span><input type="datetime-local" data-ex="when" value="${esc(f.when)}"></label>` : ''}
+        <div class="row">${editing ? '<button type="button" class="btn btn-lg" data-act="exCancel">Cancel</button>' : ''}
+          <button type="submit" class="btn btn-primary btn-lg grow" ${x.ready ? '' : 'disabled'}>${editing ? 'Save changes' : 'Save expense'}</button></div>
+        ${owner ? '<div class="muted small">Categories are set in Settings → Expense types.</div>' : ''}
+      </form>
+      <div class="stack">
+        <div class="ex-split">
+          <div class="panel"><h2>By category</h2>${exBars(byCat, total)}</div>
+          <div class="panel"><h2>By vendor</h2>${exBars(byVendor.slice(0, 8), total)}</div>
+        </div>
+        <div class="row wrap">
+          <label class="search" style="max-width:320px">${icon('search', 18)}<span class="sr">Search expenses</span><input data-exq type="search" placeholder="Search vendor, details, staff" value="${esc(x.q)}"></label>
+          <select class="ex-sel" data-excat aria-label="Category filter"><option value="all">All categories</option>${types.concat([...new Set(all.map((e) => e.type))].filter((t) => !types.includes(t))).map((t) => `<option ${x.cat === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        </div>
+        ${list.length ? [...days].map(([day, es]) => `
+          <div class="ex-day"><span>${esc(day)}</span><b>${fmt(es.reduce((a, e) => a + Number(e.amount), 0))}</b></div>
+          <div class="tbl-wrap"><table class="tbl"><tbody>${es.map((e) => { const d = exSplit(e.description); return `<tr>
+            <td style="width:80px">${fmtTime(e.created_at)}</td>
+            <td><b>${esc(d.vendor || e.type)}</b><div class="muted small">${esc([d.vendor ? e.type : '', d.note].filter(Boolean).join(' · ') || '—')}</div></td>
+            <td>${esc(e.method)}<div class="muted small">${esc(e.by_name || '')}</div></td>
+            <td class="num"><b>${fmt(e.amount)}</b></td>
+            <td class="num" style="width:90px;white-space:nowrap">${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="exEdit" data-id="${e.id}" aria-label="Edit expense">${icon('edit', 16)}</button><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="exDel" data-id="${e.id}" aria-label="Delete expense">${icon('trash', 16)}</button>` : ''}</td>
+          </tr>`; }).join('')}</tbody></table></div>`).join('') : `<div class="empty">No expenses ${x.q || x.cat !== 'all' ? 'match this filter' : 'in this period'}.</div>`}
+      </div>
+    </div>`;
 }
 
 // =====================================================================
@@ -2187,6 +2293,21 @@ const ACT = {
       toast(`Done — ${S.inv.stock.length} stock items, ${new Set(rows.map((r) => r.menu_item_id + '|' + r.option_key)).size} recipes loaded`);
     });
   },
+  exPreset: (d) => { const r = presetRange(d.v); Object.assign(S.ex, { preset: d.v, from: toLocalInput(r[0]), to: toLocalInput(r[1]), loaded: false }); renderScreen(); },
+  exType: (d) => { S.ex.form.type = d.v; renderScreen(); },
+  exMethod: (d) => { S.ex.form.method = d.v; renderScreen(); },
+  exCancel: () => { S.ex.form = exBlankForm(); S.ex.editId = null; renderScreen(); },
+  exEdit: (d) => {
+    const e = S.ex.list.find((x) => x.id === Number(d.id)); if (!e) return;
+    const p = exSplit(e.description);
+    S.ex.form = { amount: String(Number(e.amount)), type: e.type, vendor: p.vendor, method: e.method, note: p.note, when: toLocalInput(new Date(e.created_at)) };
+    S.ex.editId = e.id; renderScreen(); $('[data-ex=amount]')?.focus();
+  },
+  exDel: (d) => {
+    if (!confirm('Delete this expense?')) return;
+    run(async () => { await api.deleteExpense(Number(d.id)); S.ex.list = S.ex.list.filter((e) => e.id !== Number(d.id)); if (S.ex.editId === Number(d.id)) { S.ex.editId = null; S.ex.form = exBlankForm(); } renderScreen(); toast('Expense deleted'); });
+  },
+  exPdf: () => { rcInit(); Object.assign(S.rc, { id: 'expenses', preset: 'custom', from: S.ex.from, to: S.ex.to, result: null }); location.hash = '#reports'; },
   rCat: (d) => { S.inv.rCat = d.id; S.inv.rItem = null; renderScreen(); },
   rItem: (d) => { S.inv.rItem = d.id; renderScreen(); },
   rAdd: (d) => { S.inv.draft[d.key] = recipeRows(d.key).concat([{ stock_item_id: '', qty: '' }]); renderScreen(); },
@@ -2213,6 +2334,16 @@ function recipeRows(key) {
 }
 const csvList = (v) => String(v).split(',').map((t) => t.trim()).filter(Boolean);
 const SUBMIT = {
+  exSave: (form) => run(async () => {
+    const x = S.ex, f = x.form, amount = Math.round(Number(f.amount));
+    if (!(amount > 0)) throw new Error('Enter the amount');
+    const row = { amount, type: f.type, method: f.method, description: exJoin(f.vendor, f.note) };
+    if (f.when) { const d = new Date(f.when); if (isNaN(d)) throw new Error('Check the date & time'); row.created_at = d.toISOString(); }
+    if (x.editId != null) { await api.updateExpense(x.editId, row); toast(`Expense updated · ${fmt(amount)}`); }
+    else { await api.addExpense({ ...row, by_name: S.me.profile.name, created_by: LIVE ? S.me.user.id : null }); toast(`Expense saved · ${fmt(amount)}`); }
+    x.form = { ...exBlankForm(), type: f.type, method: f.method }; x.editId = null;
+    await exLoad(); renderScreen(); $('[data-ex=amount]')?.focus();
+  }),
   login: async (form) => {
     const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
     try {
@@ -2314,6 +2445,8 @@ document.addEventListener('input', (e) => {
     BIND[k]?.();
     return;
   }
+  if (t.dataset.ex !== undefined && S.ex) { S.ex.form[t.dataset.ex] = t.value; return; }
+  if (t.dataset.exq !== undefined && S.ex) { S.ex.q = t.value; clearTimeout(S.ex.qt); S.ex.qt = setTimeout(() => { renderScreen(); const i = $('[data-exq]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); return; }
   if (t.dataset.m && S.m) {               // field inside a pop-up
     S.m[t.dataset.m] = t.value;
     if (S.m.kind === 'discount') {
@@ -2333,6 +2466,8 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  if (t.dataset.exr && S.ex) { if (t.value) { S.ex[t.dataset.exr] = t.value; S.ex.preset = 'custom'; S.ex.loaded = false; renderScreen(); } return; }
+  if (t.dataset.excat !== undefined && S.ex) { S.ex.cat = t.value; renderScreen(); return; }
   if (t.dataset.rc && S.rc) { S.rc[t.dataset.rc] = t.value; S.rc.preset = 'custom'; S.rc.result = null; renderScreen(); return; }
   if (t.dataset.rcf && S.rc) { S.rc.f[t.dataset.rcf] = t.value; S.rc.result = null; renderScreen(); return; }
   if (t.dataset.rf) {

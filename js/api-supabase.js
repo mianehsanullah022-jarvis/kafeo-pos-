@@ -92,6 +92,7 @@ export function createSupabaseApi(url, key) {
       return must(await sb.from('expenses').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).limit(5000));
     },
     async addExpense(e) { return must(await sb.from('expenses').insert(e).select().single()); },
+    async updateExpense(id, patch) { return must(await sb.from('expenses').update(patch).eq('id', id).select().single()); },
     async deleteExpense(id) { must(await sb.from('expenses').delete().eq('id', id)); },
     async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
 

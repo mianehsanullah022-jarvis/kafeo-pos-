@@ -564,3 +564,18 @@ a.tool { text-decoration: none; }
   .rep-th .th-t tr.b td { font-weight: 800; }
   .rep-th .th-t tfoot td { font-weight: 800; border-top: 1px solid #000; }
 }
+
+/* ---------- Expenses ---------- */
+.ex-grid { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 16px; align-items: start; margin-top: 16px; }
+.ex-form { position: sticky; top: 0; }
+.ex-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ex-bars { display: flex; flex-direction: column; gap: 10px; }
+.ex-bar-top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; margin-bottom: 4px; }
+.ex-track { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.ex-track i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+.ex-day { display: flex; justify-content: space-between; padding: 6px 4px 2px; font-weight: 800; font-size: 14px; }
+.ex-date { flex-direction: row; align-items: center; gap: 6px; }
+.ex-date input { min-height: 40px; }
+.ex-sel { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; font: inherit; color: inherit; }
+@media (max-width: 1100px) { .ex-grid { grid-template-columns: 1fr; } .ex-form { position: static; } }
+@media (max-width: 700px) { .ex-split { grid-template-columns: 1fr; } }
