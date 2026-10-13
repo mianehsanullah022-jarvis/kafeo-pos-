@@ -112,7 +112,8 @@ export const ITEMS = [
   bar('drinks', 'k9', 'Fresh Lime', one(299)),
   bar('drinks', 'k10', 'Mint Margretta', one(325)),
   bar('drinks', 'k11', 'Iced Peach Tea', one(325)),
-  it('drinks', 'k12', 'Coke / Sprite', [{ k: '345ml', p: 100 }, { k: '500ml', p: 150 }, { k: '1L', p: 220 }, { k: '1.5L', p: 300 }], { station: 'bar' }),
+  it('drinks', 'k12', 'Coke', [{ k: '345ml', p: 100 }, { k: '500ml', p: 150 }, { k: '1L', p: 220 }, { k: '1.5L', p: 300 }], { station: 'bar' }),
+  it('drinks', 'k14', 'Sprite', [{ k: '345ml', p: 100 }, { k: '500ml', p: 150 }, { k: '1L', p: 220 }, { k: '1.5L', p: 300 }], { station: 'bar' }),
   it('drinks', 'k13', 'Water', [{ k: '500ml', p: 60 }, { k: '1.5L', p: 100 }], { station: 'bar' }),
 
   it('dessert', 'e1', 'Nutella Brownie', one(399)),
