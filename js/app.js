@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.14-1455';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.14-1455';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.14-1455';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.14-1458';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.14-1458';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.14-1458';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.14-1455';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.14-1455';
-import { pdfBlob } from './pdf.js?v=2026.10.14-1455';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.14-1455';
+} from './logic.js?v=2026.10.14-1458';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.14-1458';
+import { pdfBlob } from './pdf.js?v=2026.10.14-1458';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.14-1458';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.14-1455')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.14-1458')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -322,7 +322,11 @@ const modalHead = (title, sub = '') => `
 // =====================================================================
 // ORDER & BILLING
 // =====================================================================
-const itemsIn = (cat) => S.menu.items.filter((i) => i.active && i.category_id === cat);
+const ALL_CAT = '__all';
+const catOrder = (id) => { const i = S.menu.categories.findIndex((c) => c.id === id); return i < 0 ? 999 : i; };
+const itemsIn = (cat) => (cat === ALL_CAT
+  ? S.menu.items.filter((i) => i.active).sort((a, b) => catOrder(a.category_id) - catOrder(b.category_id) || (a.sort || 0) - (b.sort || 0))
+  : S.menu.items.filter((i) => i.active && i.category_id === cat));
 function visibleItems() {
   const q = S.q.trim().toLowerCase();
   if (q) return S.menu.items.filter((i) => i.active && (i.name.toLowerCase().includes(q) || (i.note || '').toLowerCase().includes(q)));
@@ -388,7 +392,7 @@ function renderBillsBadge() {
 
 function renderCats() {
   const el = $('#cats'); if (!el) return;
-  el.innerHTML = S.menu.categories.map((c) => {
+  el.innerHTML = [{ id: ALL_CAT, label: 'All items' }, ...S.menu.categories].map((c) => {
     const on = !S.q && S.cat === c.id;
     return `<button type="button" class="${on ? 'on' : ''}" aria-pressed="${on}" data-act="cat" data-id="${esc(c.id)}"><span>${esc(c.label)}</span><small>${itemsIn(c.id).length}</small></button>`;
   }).join('');
@@ -397,7 +401,13 @@ function renderGrid() {
   const el = $('#grid'); if (!el) return;
   const items = visibleItems();
   const inCart = (id) => S.cart.filter((l) => l.id === id).reduce((a, l) => a + l.qty, 0);
-  el.innerHTML = items.length ? items.map((i) => {
+  const showHeads = !S.q.trim() && S.cat === ALL_CAT;
+  const catLabel = (id) => S.menu.categories.find((c) => c.id === id)?.label || id;
+  el.innerHTML = items.length ? items.map((i, k) => {
+    const head = showHeads && (k === 0 || items[k - 1].category_id !== i.category_id) ? `<h3 class="grid-head">${esc(catLabel(i.category_id))}</h3>` : '';
+    return head + itemCard(i);
+  }).join('') : '<div class="empty">No items match.</div>';
+  function itemCard(i) {
     const n = inCart(i.id);
     const qty = n ? `<span class="in-cart" aria-label="${n} in order">${n}</span>` : '';
     const note = i.note ? `<span class="nt">${esc(i.note)}</span>` : '';
@@ -407,7 +417,7 @@ function renderGrid() {
     }
     return `<div class="icard">${qty}${itemPic(i)}<span class="body"><span class="nm">${esc(i.name)}</span>${note}
       <span class="sizes">${i.options.map((o, idx) => `<button type="button" data-act="add" data-id="${esc(i.id)}" data-o="${idx}" aria-label="Add ${esc(i.name)} ${esc(o.k)}"><b>${esc(o.k)}</b>${num(o.p)}</button>`).join('')}</span></span></div>`;
-  }).join('') : '<div class="empty">No items match.</div>';
+  }
 }
 
 // ----- order summary (right panel) -----

@@ -148,8 +148,8 @@ a { color: var(--accent); }
 .tool svg { color: var(--accent); }
 .badge { min-width: 22px; height: 22px; border-radius: 11px; background: var(--accent); color: #fff; font-size: 12px; display: inline-grid; place-items: center; padding: 0 6px; }
 .badge.zero { background: var(--line); color: var(--muted); }
-.grid { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-rows: minmax(186px, auto); gap: 14px; align-content: start; }
-.icard { position: relative; height: 100%; width: 100%; font: inherit; color: inherit; cursor: pointer; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 0; display: flex; flex-direction: column; text-align: left; box-shadow: var(--shadow); overflow: hidden; transition: transform .08s, border-color .12s, box-shadow .12s; }
+.grid { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-rows: auto; gap: 14px; align-content: start; }
+.icard { position: relative; height: 100%; min-height: 186px; width: 100%; font: inherit; color: inherit; cursor: pointer; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 0; display: flex; flex-direction: column; text-align: left; box-shadow: var(--shadow); overflow: hidden; transition: transform .08s, border-color .12s, box-shadow .12s; }
 .icard .pic { display: grid; place-items: center; height: 78px; flex-shrink: 0; }
 .icard .pic.photo { display: block; overflow: hidden; background: var(--line-soft); }
 .icard .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -582,3 +582,5 @@ a.tool { text-decoration: none; }
 .area-head { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 8px; }
 .area-head:first-of-type { margin-top: 4px; }
 .area-head b { font-size: 15px; }
+#grid .grid-head { grid-column: 1 / -1; margin: 10px 2px 0; font-size: 15px; font-weight: 800; color: var(--accent-ink); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+#grid .grid-head:first-child { margin-top: 0; }
