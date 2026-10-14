@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.13-2236';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.13-2236';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.13-2236';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.14-1455';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.14-1455';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.14-1455';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.13-2236';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.13-2236';
-import { pdfBlob } from './pdf.js?v=2026.10.13-2236';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.13-2236';
+} from './logic.js?v=2026.10.14-1455';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.14-1455';
+import { pdfBlob } from './pdf.js?v=2026.10.14-1455';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.14-1455';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.13-2236')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.14-1455')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -328,6 +328,27 @@ function visibleItems() {
   if (q) return S.menu.items.filter((i) => i.active && (i.name.toLowerCase().includes(q) || (i.note || '').toLowerCase().includes(q)));
   return itemsIn(S.cat);
 }
+// Tables grouped by area (Hall, Outdoor…). Busy tables that are no longer in the plan show under "Other".
+const tableAreas = () => (S.settings.table_areas?.length ? S.settings.table_areas : [{ name: 'Tables', tables: S.settings.tables || [] }]);
+const allTables = () => tableAreas().flatMap((a) => a.tables);
+function areasWithOthers(busyNames) {
+  const known = new Set(allTables());
+  const extra = [...new Set(busyNames)].filter((t) => t && !known.has(t));
+  return extra.length ? [...tableAreas(), { name: 'Other', tables: extra }] : tableAreas();
+}
+// "Hall: H1-H14" lines <-> areas
+const expandTables = (txt) => csvList(txt).flatMap((t) => {
+  const m = t.match(/^([A-Za-z]*)(\d+)\s*-\s*\1?(\d+)$/);
+  if (!m || Number(m[3]) < Number(m[2]) || Number(m[3]) - Number(m[2]) > 200) return [t];
+  return Array.from({ length: Number(m[3]) - Number(m[2]) + 1 }, (_, i) => m[1] + (Number(m[2]) + i));
+});
+const areasText = () => tableAreas().map((a) => `${a.name}: ${a.tables.join(', ')}`).join('\n');
+function parseAreas(txt) {
+  return String(txt).split('\n').map((l) => l.trim()).filter(Boolean).map((l, i) => {
+    const k = l.indexOf(':');
+    return k > 0 ? { name: l.slice(0, k).trim() || `Area ${i + 1}`, tables: expandTables(l.slice(k + 1)) } : { name: `Area ${i + 1}`, tables: expandTables(l) };
+  }).filter((a) => a.tables.length);
+}
 const unpaidBills = () => S.open.filter((o) => !o.paid && o.status !== 'cancelled');
 const loyaltyAvailable = () => phoneOk(cleanPhone(S.phone)) && rewardReady(S.customer, req());
 const deliveryFee = () => (S.feeOverride ?? Number(S.settings.delivery_fee)) || 0;
@@ -580,10 +601,10 @@ function renderDetails() {
   openModal('md', `
     ${modalHead('Order details', TYPE_LABEL[S.type])}
     <div class="mb stack">
-      ${S.type === 'dine' ? `<div><div class="lbl">Table</div><div class="table-grid" role="group" aria-label="Table">${(S.settings.tables || []).map((t) => {
+      ${S.type === 'dine' ? `<div class="stack" style="gap:10px">${areasWithOthers([...busyTables.keys()]).map((a, ai) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid" role="group" aria-label="${esc(a.name)} tables">${a.tables.map((t, ti) => {
         const busy = busyTables.get(t);
-        return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${t === (S.settings.tables || [])[0] ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
-      }).join('')}</div><div class="muted small">Tables with a number already have an open bill.</div></div>` : ''}
+        return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${ai === 0 && ti === 0 ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
+      }).join('')}</div></div>`).join('')}<div class="muted small">Tables with a number already have an open bill.</div></div>` : ''}
       <label class="field">Customer phone ${S.type === 'deliv' ? '*' : '(for loyalty)'}<input data-mf="phone" data-bind="phone" type="tel" inputmode="tel" placeholder="03xx xxxxxxx" value="${esc(S.phone)}" autocomplete="off"></label>
       <div id="guest">${guestHtml()}</div>
       <label class="field">Customer name<input data-mf="name" data-bind="custName" value="${esc(S.custName)}" autocomplete="off"></label>
@@ -853,13 +874,16 @@ function renderOrders(el) {
     <section class="panel">
       <div class="row" style="margin-bottom:12px"><h2 style="margin:0">Tables</h2><span class="grow"></span>
         <span class="legend"><i class="free"></i>Free</span><span class="legend"><i class="busy"></i>Has a bill</span></div>
-      <div class="tables-map">${(S.settings.tables || []).map((t) => {
+      ${areasWithOthers([...byTable.keys()]).map((a) => {
+        const busyN = a.tables.filter((t) => byTable.has(t)).length;
+        return `<div class="area-head"><b>${esc(a.name)}</b><span class="muted small">${busyN} busy · ${a.tables.length - busyN} free</span></div>
+      <div class="tables-map">${a.tables.map((t) => {
         const list = byTable.get(t) || [];
-        const amt = list.reduce((a, o) => a + Number(o.total), 0);
+        const amt = list.reduce((x, o) => x + Number(o.total), 0);
         return list.length
           ? `<button type="button" class="tmap busy" data-act="tableBill" data-v="${esc(t)}"><b>${esc(t)}</b><span>${fmt(amt)}</span><small>${minutesSince(list[0].created_at)} min · #${list.map((o) => o.id).join(', #')}</small></button>`
           : `<button type="button" class="tmap" data-act="tableNew" data-v="${esc(t)}"><b>${esc(t)}</b><span>Free</span><small>Tap to start order</small></button>`;
-      }).join('')}</div>
+      }).join('')}</div>`; }).join('')}
     </section>
     <div class="row wrap">${[['all', 'All'], ['dine', 'Dine-in'], ['take', 'Takeaway'], ['deliv', 'Delivery']].map(([v, l]) =>
       `<button type="button" class="pill ${f === v ? 'on' : ''}" aria-pressed="${f === v}" data-act="ordersFilter" data-v="${v}">${l} · ${counts[v]}</button>`).join('')}</div>
@@ -873,6 +897,7 @@ function renderOrders(el) {
         <div class="bill-actions">
           <button type="button" class="btn btn-primary btn-lg" data-act="payOpen" data-id="${o.id}">Take payment</button>
           <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items</button>
+          ${o.type === 'dine' ? `<button type="button" class="btn" data-act="moveTable" data-id="${o.id}">${icon('table', 18)} Move table</button>` : ''}
           <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
           <button type="button" class="btn" data-act="printKot" data-id="${o.id}" aria-label="Reprint kitchen ticket for order ${o.id}">KOT</button>
           ${isOwner() ? `<button type="button" class="btn btn-danger" data-act="cancelOrder" data-id="${o.id}" aria-label="Cancel order ${o.id}">${icon('x', 18)}</button>` : ''}
@@ -1702,7 +1727,7 @@ function renderSettings(el) {
       </div>
       <label class="check"><input type="checkbox" name="service_default_on" ${s.service_default_on !== false ? 'checked' : ''}> Add service charge to dine-in orders by default (cashier can switch it off per order)</label>
       <div class="cols">
-        <label class="field">Tables (comma separated)<input name="tables" value="${esc((s.tables || []).join(', '))}"></label>
+        <label class="field">Tables by area — one area per line (e.g. Hall: H1-H14)<textarea name="table_areas" style="min-height:70px">${esc(areasText())}</textarea></label>
         <label class="field">Business day starts at (for “Today” in reports)<select name="day_start_hour">${Array.from({ length: 13 }, (_, h) => `<option value="${h}" ${Number(s.day_start_hour ?? 6) === h ? 'selected' : ''}>${h === 0 ? '12:00 midnight' : h + ':00 AM'}</option>`).join('')}</select></label>
       </div>
       <label class="field">Expense types — one per line<textarea name="expense_types" style="min-height:70px">${esc((s.expense_types || []).join('\n'))}</textarea></label>
@@ -2123,6 +2148,23 @@ const ACT = {
     const o = unpaidBills().find((x) => x.type === 'dine' && x.table_no === d.v);
     if (o) { S.ordersFilter = 'all'; renderScreen(); document.getElementById('bill-' + o.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   },
+  moveTable: (d) => {
+    const o = findOrder(Number(d.id)); if (!o) return;
+    const busy = new Map(unpaidBills().filter((x) => x.type === 'dine' && x.id !== o.id).map((x) => [x.table_no, x.id]));
+    S.m = { kind: 'moveTable', id: o.id };
+    openModal('md', `${modalHead(`Move order #${o.id}`, `Now at table ${esc(o.table_no)} · pick the new table`)}
+      <div class="mb stack" style="gap:10px">${tableAreas().map((a) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid">${a.tables.map((t) =>
+        `<button type="button" class="${t === o.table_no ? 'on' : ''} ${busy.has(t) ? 'busy' : ''}" data-act="moveTo" data-v="${esc(t)}" ${t === o.table_no ? 'disabled' : ''}>${esc(t)}${busy.has(t) ? `<small>#${busy.get(t)}</small>` : ''}</button>`).join('')}</div></div>`).join('')}
+        <div class="muted small">A table with a number already has a bill — moving there keeps both bills separate.</div></div>
+      <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button></footer>`);
+  },
+  moveTo: (d) => run(async () => {
+    const id = S.m?.id, o = findOrder(id); if (!o) return;
+    const from = o.table_no;
+    await api.updateOrder(id, { table_no: d.v });
+    closeModal(); await refreshOrders(); renderScreen();
+    toast(`Order #${id} moved from ${from} to ${d.v}`);
+  }),
   payOpen: (d) => { const o = findOrder(Number(d.id)); if (o) openPayment(o); },
   editOpen: (d) => {
     const o = findOrder(Number(d.id)); if (!o) return;
@@ -2388,7 +2430,8 @@ const SUBMIT = {
       prices_include_tax: form.prices_include_tax.checked, tax_number: form.tax_number.value.trim(),
       service_pct: pct(form.service_pct.value), service_default_on: form.service_default_on.checked,
       delivery_fee: Math.max(0, Number(form.delivery_fee.value) || 0), round_to: Number(form.round_to.value) || 0,
-      tables: csvList(form.tables.value), day_start_hour: Number(form.day_start_hour.value) || 0,
+      ...(() => { const areas = parseAreas(form.table_areas.value); if (!areas.length) throw new Error('Add at least one table'); return { table_areas: areas, tables: areas.flatMap((a) => a.tables) }; })(),
+      day_start_hour: Number(form.day_start_hour.value) || 0,
       expense_types: form.expense_types.value.split('\n').map((l) => l.trim()).filter(Boolean),
       cashier_max_discount_pct: pct(form.cashier_max_discount_pct.value),
       quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),

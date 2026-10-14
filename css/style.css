@@ -579,3 +579,6 @@ a.tool { text-decoration: none; }
 .ex-sel { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; font: inherit; color: inherit; }
 @media (max-width: 1100px) { .ex-grid { grid-template-columns: 1fr; } .ex-form { position: static; } }
 @media (max-width: 700px) { .ex-split { grid-template-columns: 1fr; } }
+.area-head { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 8px; }
+.area-head:first-of-type { margin-top: 4px; }
+.area-head b { font-size: 15px; }

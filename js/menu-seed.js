@@ -163,7 +163,12 @@ export const DEFAULT_SETTINGS = {
   print_offset_mm: 0,
   loyalty_stamps: 5,
   loyalty_discount_pct: 50,
-  tables: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'H1', 'H2'],
+  tables: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'H1', 'H2'],   // old flat list (kept for older saved settings)
+  // KAFEO floor plan: 14 tables in the hall + 4 outdoor tables on the ground floor
+  table_areas: [
+    { name: 'Hall', tables: ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'H12', 'H13', 'H14'] },
+    { name: 'Outdoor (ground floor)', tables: ['O1', 'O2', 'O3', 'O4'] }
+  ],
   // Buy More Save More: spend threshold → free item name (added at Rs 0)
   bmsm: [
     { min: 3500, reward: 'Free dessert' },
