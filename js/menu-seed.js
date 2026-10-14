@@ -119,6 +119,7 @@ export const ITEMS = [
   it('dessert', 'e1', 'Nutella Brownie', one(399)),
   it('dessert', 'e2', 'Belgian Chocolate Brownie', one(399)),
   it('dessert', 'e3', 'Nuts Brownie', one(399)),
+  it('dessert', 'e4', 'Vanilla Ice Cream', one(350), { note: '2 scoops' }),
 
   it('addons', 'a1', 'Extra Cheese', sml(70, 130, 200), { note: 'Pizza topping' }),
   it('addons', 'a2', 'Extra Chicken', sml(70, 130, 200), { note: 'Pizza topping' }),

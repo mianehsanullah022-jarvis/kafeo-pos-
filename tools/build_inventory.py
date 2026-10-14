@@ -149,6 +149,7 @@ lava = {k: v for k, v in book.R[('b1', '')].items() if k not in ('Cheese sticks'
 R[('b1', '')] = plus(conv(lava), scale(R[('f10', '')], 1), scale(R[('f11', '')], 2 / 6))
 # brownies by type, soft drinks by brand
 R[('e1', '')] = {'Nutella brownie': 1}; R[('e2', '')] = {'Belgian brownie': 1}; R[('e3', '')] = {'Brownies (nuts)': 1}
+R[('e4', '')] = {'Ice cream': 120}          # vanilla ice cream, 2 scoops (about 60 g each)
 R[('k13', '500ml')] = {'Water small': 1}; R[('k13', '1.5L')] = {'Water large': 1}
 SIZES = ('345ml', '500ml', '1L', '1.5L')
 for s in SIZES:
