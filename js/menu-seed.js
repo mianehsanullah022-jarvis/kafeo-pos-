@@ -133,7 +133,12 @@ export const ITEMS = [
   it('addons', 'a8', 'Chicken Patty', one(200)),
   it('addons', 'a9', 'Chicken Fillet', one(180)),
   it('addons', 'a10', 'Honey Mustard Dip', one(70)),
-  it('addons', 'a11', 'Peri Peri Dip', one(90))
+  it('addons', 'a11', 'Peri Peri Dip', one(90)),
+  it('addons', 'a12', 'Garlic Mayo Sauce', one(70)),
+  it('addons', 'a13', 'BBQ Sauce', one(70)),
+  it('addons', 'a14', 'Chipotle Sauce', one(70)),
+  it('addons', 'a15', 'Burger Sauce', one(70)),
+  it('addons', 'a16', 'Creamy Mayo Sauce', one(70))
 ];
 
 // Starting settings. Tax, service charge and delivery fee are 0 until the owner sets them in Settings.

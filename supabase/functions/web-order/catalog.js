@@ -102,7 +102,8 @@ const BASE = [
   // Desserts
   ['Nutella Brownie', 'e1', 399, 'desserts'],
   ['Belgian Chocolate Brownie', 'e2', 399, 'desserts'],
-  ['Nuts Brownie', 'e3', 399, 'desserts']
+  ['Nuts Brownie', 'e3', 399, 'desserts'],
+  ['Vanilla Ice Cream', 'e4', 350, 'desserts']
 ];
 
 // Website deals ("Deal: <name>") at the website price.
@@ -126,20 +127,23 @@ const ADDONS = {
   'Mushrooms': ['a7', 70, 'Mushrooms'],
   'Cheese slice': ['a4', 70, 'Cheese Slice'],
   'Extra chicken patty': ['a8', 200, 'Chicken Patty'],
-  'Garlic mayo sauce': ['', 70, 'Garlic Mayo Sauce'],
-  'BBQ sauce': ['', 70, 'BBQ Sauce'],
-  'Chipotle sauce': ['', 70, 'Chipotle Sauce'],
-  'Honey mustard sauce': ['a10', 90, 'Honey Mustard Dip'],
+  'Chicken fillet': ['a9', 180, 'Chicken Fillet'],
+  'Garlic mayo sauce': ['a12', 70, 'Garlic Mayo Sauce'],
+  'BBQ sauce': ['a13', 70, 'BBQ Sauce'],
+  'Chipotle sauce': ['a14', 70, 'Chipotle Sauce'],
+  'Burger sauce': ['a15', 70, 'Burger Sauce'],
+  'Creamy mayo sauce': ['a16', 70, 'Creamy Mayo Sauce'],
+  'Honey mustard sauce': ['a10', 70, 'Honey Mustard Dip'],
   'Peri peri sauce': ['a11', 90, 'Peri Peri Dip']
 };
 // Which add-ons each category offers on the website (anything else is flagged).
 const CAT_ADDONS = {
   pizza: ['Extra cheese', 'Extra chicken', 'Extra sausage', 'Olives', 'Jalapeño', 'Mushrooms'],
-  burgers: ['Cheese slice', 'Jalapeño', 'Mushrooms', 'Extra chicken patty'],
+  burgers: ['Cheese slice', 'Jalapeño', 'Mushrooms', 'Extra chicken patty', 'Chicken fillet'],
   sandwich: ['Cheese slice', 'Jalapeño'],
   steak: ['Mushrooms', 'Jalapeño', 'Cheese slice'],
   pasta: ['Mushrooms', 'Olives'],
-  sides: ['Garlic mayo sauce', 'BBQ sauce', 'Chipotle sauce', 'Honey mustard sauce', 'Peri peri sauce'],
+  sides: ['Garlic mayo sauce', 'BBQ sauce', 'Chipotle sauce', 'Burger sauce', 'Creamy mayo sauce', 'Honey mustard sauce', 'Peri peri sauce'],
   wings: ['BBQ sauce', 'Garlic mayo sauce', 'Honey mustard sauce', 'Peri peri sauce']
 };
 const CUSTOM_DRINK = { id: 'c5', price: 800 };
