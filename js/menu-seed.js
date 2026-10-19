@@ -98,6 +98,8 @@ export const ITEMS = [
   bar('coffee', 'c9', 'Oreo Coffee', one(599)),
   bar('coffee', 'c10', 'Karak Chai', one(280)),
   bar('coffee', 'c11', 'Cardamom Tea', one(299)),
+  it('coffee', 'c14', 'Mix Karak', one(280), { counts: 'drink' }),
+  it('coffee', 'c15', 'Mix Cardamom', one(300), { counts: 'drink' }),
   bar('coffee', 'c12', 'Kashmiri Chai', one(320)),
   bar('coffee', 'c13', 'Green Tea', one(150)),
 

@@ -75,6 +75,8 @@ const BASE = [
   ['Kashmiri Chai', 'c12', 320, 'coffee'],
   ['Cardamom Tea', 'c11', 299, 'coffee'],
   ['Karak Chai', 'c10', 280, 'coffee'],
+  ['Mix Karak', 'c14', 280, 'coffee'],
+  ['Mix Cardamom', 'c15', 300, 'coffee'],
   ['Green Tea', 'c13', 150, 'coffee'],
   // Cold coffee & shakes
   ['Caramel Cold Coffee', 'c8', 649, 'shakes'],
