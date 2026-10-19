@@ -139,7 +139,7 @@ Any printer works through the browser's print dialog. For an 80mm thermal printe
 
 Every order placed on the KAFEO website lands on the POS straight away, and the customer's WhatsApp message to 0304 2077720 still opens as a second copy (plus the email copy).
 
-- On the counter, a green **🔔 New website order** bar appears on every screen, the page title shows the count, and a chime repeats every 20 seconds until someone handles it. (Tap the screen once after opening the POS so the browser allows sound.)
+- On the counter, the **Website** button in the side menu shows a green badge with the number of waiting website orders, a green **🔔 New website order** bar appears on every screen, the page title shows the count, and a chime repeats every 20 seconds until someone handles it. (Tap the screen once after opening the POS so the browser allows sound.)
 - Tap **Review & accept**: you see the customer, phone (tap to call or WhatsApp), address with map pin, how they'll pay, items with their choices (spice, add-ons) and any **⚠ Check before accepting** warnings (price didn't match the menu, unknown item…). For delivery, type the delivery fee if any.
 - **Accept & send to kitchen** → it becomes a normal order: kitchen ticket prints, it shows on Kitchen / Orders / Delivery, stock goes down, the customer card is saved. **Reject** cancels it (tell the customer).
 - Until accepted, website orders never reach the kitchen screen.

@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-0827';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-0827';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-0827';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-1529';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-1529';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-1529';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.19-0827';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-0827';
-import { pdfBlob } from './pdf.js?v=2026.10.19-0827';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-0827';
+} from './logic.js?v=2026.10.19-1529';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-1529';
+import { pdfBlob } from './pdf.js?v=2026.10.19-1529';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-1529';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.19-0827')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.19-1529')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -45,7 +45,8 @@ const ICON = {
   check: 'M5 12l5 5 9-10',
   box: 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10',
   wallet: 'M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z M3 7l11-4 2 4 M16.5 14h.01',
-  star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'
+  star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  web: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M3 12h18 M12 3c3 3.5 3 14.5 0 18 M12 3c-3 3.5-3 14.5 0 18'
 };
 const icon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[k]}"></path></svg>`;
 
@@ -298,6 +299,7 @@ function renderShell() {
     <nav class="rail" aria-label="POS sections">
       <div class="k">K</div>
       ${links}
+      ${canSee('orders') ? `<button type="button" class="rail-web" data-act="webOpen" aria-label="Website orders">${icon('web')}Website<b class="rail-badge web" id="rail-web"></b></button>` : ''}
       <div class="spacer"></div>
       <div class="live-dot" id="live-dot"></div>
       <button type="button" data-act="account" aria-label="My account">${icon('me')}Me</button>
@@ -333,6 +335,8 @@ function renderWebAlert() {
   const el = $('#web-alert');
   if (!el) return;
   const list = canSee('orders') ? webPending() : [];
+  const rb = $('#rail-web');
+  if (rb) { rb.textContent = list.length || ''; rb.parentElement.classList.toggle('has-web', !!list.length); }
   document.title = list.length ? `(${list.length}) New website order — KAFEO POS` : 'KAFEO POS';
   if (!list.length) { el.innerHTML = ''; el.className = ''; return; }
   const total = list.reduce((a, o) => a + Number(o.total), 0);

@@ -598,3 +598,8 @@ a.tool { text-decoration: none; }
 .web-card.warn { border-color: #d39b2a; background: #fff8e8; }
 .web-flags { background: #fff1cc; border: 1px solid #e3b44a; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #5c4100; }
 .web-flags ul { margin: 4px 0 0 18px; padding: 0; }
+/* Website orders button + badge in the side menu */
+.rail button.rail-web { position: relative; }
+.rail-badge.web { background: #1f9d7a; box-shadow: 0 0 0 2px var(--night, #1b1411); }
+.rail button.rail-web.has-web { color: #fff; background: #1f6f5c; animation: webPulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rail button.rail-web.has-web { animation: none; } }
