@@ -49,8 +49,8 @@ const BASE = [
   ['Crunchy Wrap', 'w7', 549, 'sandwich'],
   // Fries & sides
   ['Loaded Fries', 'f1', 699, 'sides'],
-  ['Masala Fries', 'f2', 675, 'sides'],
-  ['Pizza Fries', 'f3', 675, 'sides'],
+  ['Masala Fries', 'f2', 299, 'sides'],
+  ['Pizza Fries', 'f3', 299, 'sides'],
   ['Jalapeño Cheese Fries', 'f4', 599, 'sides'],
   ['Mayo Cheese Fries', 'f5', 449, 'sides'],
   ['Garlic Mayo Fries', 'f6', 399, 'sides'],

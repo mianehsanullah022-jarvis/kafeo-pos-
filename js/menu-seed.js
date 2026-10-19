@@ -72,8 +72,8 @@ export const ITEMS = [
   it('sand', 'w7', 'Crunchy Wrap', one(549)),
 
   it('sides', 'f1', 'Loaded Fries', one(699)),
-  it('sides', 'f2', 'Masala Fries', one(675)),
-  it('sides', 'f3', 'Pizza Fries', one(675)),
+  it('sides', 'f2', 'Masala Fries', one(299)),
+  it('sides', 'f3', 'Pizza Fries', one(299)),
   it('sides', 'f4', 'Jalapeno Cheese Fries', one(599)),
   it('sides', 'f5', 'Mayo Cheese Fries', one(449)),
   it('sides', 'f6', 'Garlic Mayo Fries', one(399)),
