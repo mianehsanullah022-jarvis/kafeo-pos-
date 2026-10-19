@@ -4,6 +4,16 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 export function createSupabaseApi(url, key) {
   const sb = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
   const must = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
+  // The database sends at most 1,000 rows per request, so long date ranges are fetched in pages.
+  async function allPages(build, cap) {
+    const out = [];
+    for (let from = 0; from < cap; from += 1000) {
+      const page = must(await build().range(from, Math.min(from + 999, cap - 1)));
+      out.push(...page);
+      if (page.length < 1000) break;
+    }
+    return out;
+  }
 
   async function profileFor(user) {
     if (!user) return null;
@@ -54,7 +64,7 @@ export function createSupabaseApi(url, key) {
     async createOrder(o) { return must(await sb.from('orders').insert(o).select().single()); },
     async updateOrder(id, patch) { return must(await sb.from('orders').update(patch).eq('id', id).select().single()); },
     async ordersBetween(fromIso, toIso) {
-      return must(await sb.from('orders').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: false }).limit(5000));
+      return allPages(() => sb.from('orders').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: false }).order('id', { ascending: false }), 50000);
     },
     async openOrders() {
       // Anything not finished, plus unpaid bills, from the last 3 days.
@@ -89,11 +99,11 @@ export function createSupabaseApi(url, key) {
     },
     async addMoves(moves) { if (moves.length) must(await sb.from('stock_moves').insert(moves)); },
     async movesBetween(fromIso, toIso) {
-      return must(await sb.from('stock_moves').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).limit(10000));
+      return allPages(() => sb.from('stock_moves').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).order('id', { ascending: true }), 100000);
     },
     // ---- expenses ----
     async expensesBetween(fromIso, toIso) {
-      return must(await sb.from('expenses').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).limit(5000));
+      return allPages(() => sb.from('expenses').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).order('id', { ascending: true }), 50000);
     },
     async addExpense(e) { return must(await sb.from('expenses').insert(e).select().single()); },
     async updateExpense(id, patch) { return must(await sb.from('expenses').update(patch).eq('id', id).select().single()); },

@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-2047';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-2047';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-2047';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-2149';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-2149';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-2149';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.19-2047';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-2047';
-import { pdfBlob } from './pdf.js?v=2026.10.19-2047';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-2047';
+} from './logic.js?v=2026.10.19-2149';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-2149';
+import { pdfBlob } from './pdf.js?v=2026.10.19-2149';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-2149';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.19-2047')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.19-2149')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1097,7 +1097,8 @@ function renderOrders(el) {
 // DASHBOARD (owner) — live "right now" status, sales with comparison, trend chart, breakdowns
 // Numbers use the same rules as Reports: sales = paid, not-cancelled orders, after discounts.
 // =====================================================================
-const DASH_RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days'], ['month', 'This month']];
+const DASH_RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days'], ['month', 'This month'], ['last90', 'Last 3 months'], ['custom', 'Custom']];
+const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const DAY = 864e5;
 function dashRanges(range) {
   const day = businessDayStart();
@@ -1107,6 +1108,16 @@ function dashRanges(range) {
   if (range === 'yesterday') return { from: add(day, -DAY), to: day, pFrom: add(day, -2 * DAY), pTo: add(day, -DAY), cmp: 'the day before', days: 1 };
   if (range === 'last7') return { from: add(day, -6 * DAY), to: add(day, DAY), pFrom: add(day, -13 * DAY), pTo: add(now, -7 * DAY), cmp: 'the 7 days before', days: 7 };
   if (range === 'last30') return { from: add(day, -29 * DAY), to: add(day, DAY), pFrom: add(day, -59 * DAY), pTo: add(now, -30 * DAY), cmp: 'the 30 days before', days: 30 };
+  if (range === 'last90') return { from: add(day, -89 * DAY), to: add(day, DAY), pFrom: add(day, -179 * DAY), pTo: add(now, -90 * DAY), cmp: 'the 3 months before', days: 90 };
+  if (range === 'custom') {
+    // Business days: a date runs from the day-start hour (6 AM) to 6 AM the next morning.
+    const h = Number(S.settings.day_start_hour ?? 6);
+    const at = (ymd) => { const [y, m, dd] = ymd.split('-').map(Number); return new Date(y, m - 1, dd, h); };
+    const from = at(S.dash.cfrom), to = add(at(S.dash.cto), DAY);
+    const days = Math.max(1, Math.round((to - from) / DAY));
+    const len = to - from;
+    return { from, to, pFrom: add(from, -len), pTo: add(new Date(Math.min(now, to)), -len), cmp: days === 1 ? 'the day before' : `the ${days} days before`, days, custom: true };
+  }
   const [mFrom, mTo] = presetRange('month');
   const [lFrom] = presetRange('lastMonth');
   const days = Math.round((mTo - mFrom) / DAY);
@@ -1175,6 +1186,7 @@ function dashBuckets() {
     return { rows, unit: 'hour' };
   }
   const n = r.days;
+  if (n > 62) return dashGroupBuckets(n > 200 ? 'month' : 'week');
   const cur = new Array(n).fill(0), prv = new Array(n).fill(0);
   const di = (o, base) => Math.floor((businessDayStart(new Date(o.created_at)) - base) / DAY + 0.5);
   d.orders.filter(isSale).forEach((o) => { const i = di(o, r.from); if (i >= 0 && i < n) cur[i] += Number(o.total); });
@@ -1193,9 +1205,39 @@ function dashBuckets() {
   return { rows, unit: 'day' };
 }
 
+// Long periods: one bar per week (Mon–Sun) or per month; the comparison line is the same position in the earlier period.
+function dashGroupBuckets(unit) {
+  const d = S.dash, r = d.r;
+  const keyOf = (date, base) => {
+    const bd = businessDayStart(date);
+    if (unit === 'month') return (bd.getFullYear() - base.getFullYear()) * 12 + bd.getMonth() - base.getMonth();
+    return Math.floor((bd - base) / (7 * DAY));
+  };
+  const today = businessDayStart();
+  const end = new Date(Math.min(today.getTime(), r.to.getTime() - DAY));
+  const nb = keyOf(end, r.from) + 1;
+  const cur = new Array(nb).fill(0), prv = new Array(nb).fill(0);
+  d.orders.filter(isSale).forEach((o) => { const i = keyOf(new Date(o.created_at), r.from); if (i >= 0 && i < nb) cur[i] += Number(o.total); });
+  d.prevChart.filter(isSale).forEach((o) => { const i = keyOf(new Date(o.created_at), r.pFrom); if (i >= 0 && i < nb) prv[i] += Number(o.total); });
+  const fmtD = (x) => x.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const rows = [];
+  for (let i = 0; i < nb; i++) {
+    if (unit === 'month') {
+      const m = new Date(r.from.getFullYear(), r.from.getMonth() + i, 15);
+      rows.push({ label: m.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), short: m.toLocaleDateString('en-GB', { month: 'short' }), cur: cur[i], prev: prv[i] });
+    } else {
+      const a = new Date(r.from.getTime() + i * 7 * DAY + 12 * 3600e3);
+      const b = new Date(Math.min(a.getTime() + 6 * DAY, end.getTime() + 12 * 3600e3));
+      rows.push({ label: `Week of ${fmtD(a)} – ${fmtD(b)}`, short: fmtD(a), cur: cur[i], prev: prv[i] });
+    }
+  }
+  return { rows, unit };
+}
+
 function renderDashboard(el) {
   el.className = 'screen dash';
   const d = S.dash;
+  if (!d.cfrom) { const t = businessDayStart(); d.cto = ymdLocal(t); d.cfrom = ymdLocal(new Date(t.getTime() - 89 * DAY)); }
   if (!d.loaded) {
     el.innerHTML = '<div class="empty">Loading dashboard…</div>';
     if (!d.loading) { d.loading = true; run(async () => { await loadDash(); }).finally(() => { d.loading = false; if (S.route === 'dashboard') renderScreen(); }); }
@@ -1233,7 +1275,7 @@ function renderDashboard(el) {
   const recent = [...d.orders].sort((x, y) => y.created_at.localeCompare(x.created_at)).slice(0, 12);
   const periodText = r.days === 1
     ? r.from.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-    : `${r.from.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${new Date(Math.min(Date.now(), r.to - 1)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+    : `${r.from.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${businessDayStart(new Date(Math.min(Date.now(), r.to - 1))).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   const tile = (label, value, delta, sub) => `<div class="kpi"><div class="l">${label}</div><div class="v">${value}</div><div class="s">${delta}${sub ? ` <span>${sub}</span>` : ''}</div></div>`;
 
   el.innerHTML = `
@@ -1244,6 +1286,13 @@ function renderDashboard(el) {
     </div>
     <div class="seg dash-range" role="group" aria-label="Period">${DASH_RANGES.map(([v, l]) =>
       `<button type="button" class="${d.range === v ? 'on' : ''}" aria-pressed="${d.range === v}" data-act="dashRange" data-v="${v}">${l}</button>`).join('')}</div>
+    ${d.range === 'custom' ? `<form class="dash-custom" data-submit="dashCustom">
+      <label class="field">From<input type="date" name="from" value="${esc(d.cfrom)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
+      <label class="field">To<input type="date" name="to" value="${esc(d.cto)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
+      <div class="dash-quick">${[['Last 3 months', 89], ['Last 6 months', 182], ['This year', 'year'], ['Last 12 months', 364]].map(([l, n]) =>
+        `<button type="button" class="pill" data-act="dashQuick" data-n="${n}">${l}</button>`).join('')}</div>
+      <button type="submit" class="btn btn-primary">Show</button>
+    </form>` : ''}
 
     <section class="dash-live" aria-label="Right now">
       ${live.map((x) => `<${x.act ? 'button type="button"' : 'a'} class="live-chip ${x.tone}" ${x.act ? `data-act="${x.act}"` : `href="${x.href}"`}>
@@ -1268,13 +1317,13 @@ function renderDashboard(el) {
     </section>
 
     <section class="panel">
-      <div class="row wrap"><h2 style="margin:0">Sales ${b.unit === 'hour' ? 'by hour' : 'by day'}</h2><span class="grow"></span>
+      <div class="row wrap"><h2 style="margin:0">Sales by ${b.unit}</h2><span class="grow"></span>
         <span class="legend-k"><i class="k-bar"></i>${r.days === 1 ? esc(d.range === 'today' ? 'Today' : 'Yesterday') : 'This period'}</span>
         <span class="legend-k"><i class="k-line"></i>${esc(r.chartCmp || r.cmp.replace(/^the /, '').replace(/^./, (c) => c.toUpperCase()))}</span></div>
       <div class="muted small" style="margin:4px 0 8px">${peak ? `Busiest ${b.unit}: <b>${esc(peak.label)}</b> · ${fmt(peak.cur)}` : 'No paid orders in this period yet.'}</div>
       <div class="trend" id="dash-trend"></div>
       <details class="dash-table"><summary>View as table</summary>
-        <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>${b.unit === 'hour' ? 'Hour' : 'Day'}</th><th class="num">Sales</th><th class="num">Compared with</th></tr></thead><tbody>
+        <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>${b.unit[0].toUpperCase() + b.unit.slice(1)}</th><th class="num">Sales</th><th class="num">Compared with</th></tr></thead><tbody>
         ${b.rows.map((x) => `<tr><td>${esc(x.label)}</td><td class="num">${fmt(x.cur)}</td><td class="num">${fmt(x.prev)}</td></tr>`).join('')}</tbody></table></div>
       </details>
     </section>
@@ -2689,6 +2738,12 @@ const ACT = {
   print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) await printReceipt(o, { reprint: o.paid }); }),
   webOpen: () => openWebOrders(),
   dashRange: (d) => { S.dash.range = d.v; S.dash.loaded = false; renderScreen(); },
+  dashQuick: (d) => {
+    const t = businessDayStart();
+    S.dash.cto = ymdLocal(t);
+    S.dash.cfrom = d.n === 'year' ? `${t.getFullYear()}-01-01` : ymdLocal(new Date(t.getTime() - Number(d.n) * DAY));
+    S.dash.loaded = false; renderScreen();
+  },
   notifyOn: () => run(async () => {
     const p = await Notification.requestPermission();
     renderNotifyBar();
@@ -2910,6 +2965,13 @@ function recipeRows(key) {
 }
 const csvList = (v) => String(v).split(',').map((t) => t.trim()).filter(Boolean);
 const SUBMIT = {
+  dashCustom: (form) => {
+    const a = form.from.value, b = form.to.value;
+    if (!a || !b) return toast('Pick both dates', { err: true });
+    if (a > b) return toast('The “From” date must be before the “To” date', { err: true });
+    if ((new Date(b) - new Date(a)) / DAY > 731) return toast('Please pick 2 years or less', { err: true });
+    Object.assign(S.dash, { cfrom: a, cto: b, loaded: false }); renderScreen();
+  },
   exSave: (form) => run(async () => {
     const x = S.ex, f = x.form, amount = Math.round(Number(f.amount));
     if (!(amount > 0)) throw new Error('Enter the amount');

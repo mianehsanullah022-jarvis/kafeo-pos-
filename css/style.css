@@ -670,3 +670,8 @@ a.tool { text-decoration: none; }
 .screen.refreshing { opacity: .6; transition: opacity .2s; }
 .dash .dash-range button { white-space: nowrap; }
 @media (max-width: 640px) { .dash .hero-v { font-size: 40px; } .dash .dash-range { overflow-x: auto; grid-auto-columns: max-content; } .dash .kpis { grid-template-columns: 1fr 1fr; } }
+/* Dashboard custom date range */
+.dash .dash-range { max-width: 920px; }
+.dash-custom { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.dash-custom .field { min-width: 160px; }
+.dash-quick { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 220px; }
