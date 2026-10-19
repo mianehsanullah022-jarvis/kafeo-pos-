@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-1529';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-1529';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-1529';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-1547';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-1547';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-1547';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.19-1529';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-1529';
-import { pdfBlob } from './pdf.js?v=2026.10.19-1529';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-1529';
+} from './logic.js?v=2026.10.19-1547';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-1547';
+import { pdfBlob } from './pdf.js?v=2026.10.19-1547';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-1547';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.19-1529')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.19-1547')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -245,11 +245,7 @@ function checkNewOrders() {
   if (web.length && canSee('orders')) {
     webChime();
     toast(`New website order #${web[0].id}${web.length > 1 ? ` (+${web.length - 1} more)` : ''} — tap to review`, { action: { label: 'Review', fn: () => openWebOrders() } });
-    try {
-      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-        new Notification('KAFEO — new website order', { body: web.map((o) => `#${o.id} · ${TYPE_LABEL[o.type]} · ${fmt(o.total)}`).join('\n'), tag: 'kafeo-web' });
-      }
-    } catch { /* notifications not available */ }
+    web.forEach((o) => notifyOrder(o));
   }
   renderWebAlert();
 }
@@ -307,6 +303,7 @@ function renderShell() {
     <div class="main">
       ${LIVE ? '' : '<div class="demo-bar">DEMO MODE — data stays in this browser. Connect the database to go live (see README).</div>'}
       <div id="web-alert"></div>
+      <div id="notify-bar"></div>
       <div id="screen"></div>
     </div>
   </div>
@@ -321,6 +318,7 @@ function renderShell() {
   renderBillsBadge();
   renderInvBadge();
   renderWebAlert();
+  renderNotifyBar();
 }
 function renderLiveDot() {
   const el = $('#live-dot');
@@ -328,6 +326,48 @@ function renderLiveDot() {
   el.className = 'live-dot ' + S.live;
   el.innerHTML = `<i></i>${S.live === 'on' ? 'Live' : S.live === 'off' ? 'Offline' : 'Connecting'}`;
 }
+// ---------- pop-up notifications (Windows / Mac / Android) ----------
+// Shown for every new website order, also while the POS tab is open and in front.
+// Needs a one-time "Allow" in the browser (the green bar under the alert asks for it).
+const NOTIFY_OK = 'Notification' in window && window.isSecureContext;
+let swReg = null;
+if (NOTIFY_OK && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw-notify.js').then((r) => { swReg = r; }).catch((e) => console.warn('Notification helper not installed:', e.message));
+  navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.type === 'kafeo-open-web-orders' && S.me?.profile) openWebOrders(); });
+}
+const notifyState = () => (!NOTIFY_OK ? 'unsupported' : Notification.permission);   // 'granted' | 'denied' | 'default'
+async function notifyOrder(o) {
+  if (notifyState() !== 'granted') return;
+  const items = o.items.map((l) => `${l.qty}× ${l.name}`).join(', ');
+  const title = `🔔 New website order #${o.id} · ${fmt(o.total)}`;
+  const opts = {
+    body: `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + o.customer_name : ''} · ${o.customer_phone}\n${items}`.slice(0, 300),
+    tag: 'kafeo-web-' + o.id, renotify: true, requireInteraction: true, silent: false,
+    icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231E1714'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='36' font-weight='700' text-anchor='middle' fill='%23E9D3A8'%3EK%3C/text%3E%3C/svg%3E",
+    data: { id: o.id }
+  };
+  try {
+    const reg = swReg || (await navigator.serviceWorker?.getRegistration?.());
+    if (reg?.showNotification) { await reg.showNotification(title, opts); return; }
+  } catch (e) { console.warn('Service worker notification failed:', e.message); }
+  try {
+    const n = new Notification(title, opts);
+    n.onclick = () => { window.focus(); n.close(); openWebOrders(); };
+  } catch (e) { console.warn('Notification failed:', e.message); }
+}
+async function closeOrderNotification(id) {
+  try { const reg = swReg || (await navigator.serviceWorker?.getRegistration?.()); (await reg?.getNotifications?.({ tag: 'kafeo-web-' + id }))?.forEach((n) => n.close()); } catch { /* ignore */ }
+}
+function renderNotifyBar() {
+  const el = $('#notify-bar'); if (!el) return;
+  const st = notifyState();
+  if (!canSee('orders') || st === 'granted' || st === 'unsupported') { el.innerHTML = ''; el.className = ''; return; }
+  el.className = 'notify-bar';
+  el.innerHTML = st === 'default'
+    ? `<span>🔔 Get a pop-up on this screen for every website order.</span><button type="button" class="btn btn-primary btn-sm" data-act="notifyOn">Turn on notifications</button>`
+    : `<span>🔕 Order notifications are blocked on this device. Click the 🔒 lock next to the web address → <b>Notifications</b> → <b>Allow</b>, then refresh.</span>`;
+}
+
 // ---------- website orders ----------
 // Orders from the KAFEO website arrive as 'pending'. They wait here (with a sound every
 // 20 seconds) until a cashier accepts them — only then do they go to the kitchen.
@@ -350,7 +390,6 @@ function renderWebAlert() {
 function openWebOrders() {
   S.m = { kind: 'web', fees: {} };
   renderWebOrders();
-  try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { /* ignore */ }
 }
 function webFeeFor(o) {
   const typed = S.m?.fees?.[o.id];
@@ -406,6 +445,7 @@ async function acceptWebOrder(id) {
   const r = await api.updateIfPending(id, patch);
   if (!r) { await refreshOrders(); renderWebAlert(); renderWebOrders(); toast('Someone already handled this order'); return; }
   S.seenNew.add(r.id);              // the kitchen screen beeps for it itself
+  closeOrderNotification(r.id);
   syncStock(r, [], r.items);        // background, never blocks
   if (r.customer_phone) { try { await saveCustomerAfter(r, false); } catch (e) { console.warn('Customer not saved:', e.message); } }
   await refreshOrders();
@@ -420,6 +460,7 @@ async function rejectWebOrder(id) {
   if (!o) return;
   const reason = prompt(`Reject website order #${id}? Type a short reason (e.g. "customer cancelled", "fake order"). Remember to tell the customer.`, '');
   if (reason === null) return;
+  closeOrderNotification(id);
   const r = await api.updateIfPending(id, { status: 'cancelled', meta: { ...(o.meta || {}), rejected_by: S.me.profile.name, rejected_at: new Date().toISOString(), reject_reason: reason.trim().slice(0, 200) } });
   await refreshOrders();
   renderWebAlert();
@@ -2314,6 +2355,15 @@ const ACT = {
   },
   print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) await printReceipt(o, { reprint: o.paid }); }),
   webOpen: () => openWebOrders(),
+  notifyOn: () => run(async () => {
+    const p = await Notification.requestPermission();
+    renderNotifyBar();
+    if (p === 'granted') {
+      toast('Notifications on — you will get a pop-up for every website order');
+      try { const reg = swReg || (await navigator.serviceWorker?.getRegistration?.()); const t = 'KAFEO POS — notifications are on ✓', o = { body: 'New website orders will pop up here.', tag: 'kafeo-test' };
+        if (reg?.showNotification) await reg.showNotification(t, o); else new Notification(t, o); } catch { /* ignore */ }
+    } else toast('Notifications were not allowed', { err: true });
+  }),
   webAccept: (d) => {
     if (S.busy) return;
     S.busy = true; renderWebOrders();

@@ -603,3 +603,7 @@ a.tool { text-decoration: none; }
 .rail-badge.web { background: #1f9d7a; box-shadow: 0 0 0 2px var(--night, #1b1411); }
 .rail button.rail-web.has-web { color: #fff; background: #1f6f5c; animation: webPulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .rail button.rail-web.has-web { animation: none; } }
+/* Turn-on-notifications bar */
+.notify-bar { margin: 10px 16px 0; padding: 10px 14px; border-radius: 12px; background: #fff8e8; border: 1px solid #e3b44a; color: #5c4100;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14px; }
+.notify-bar span { flex: 1; min-width: 220px; }

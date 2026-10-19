@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-1529';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-1547';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
