@@ -28,12 +28,12 @@ const it = (cat, id, name, opts, extra = {}) => ({
 const bar = (cat, id, name, opts, note) => it(cat, id, name, opts, { station: 'bar', counts: 'drink', note });
 
 export const ITEMS = [
-  it('deals', 'd1', 'Starter Boost', one(649), { note: 'Zinger + Coke' }),
-  it('deals', 'd2', 'Buddy Boost', one(1298), { note: 'Zinger + Fiery Fillet + Coke 500ml' }),
-  it('deals', 'd3', 'Pizza Power-Up', one(1473), { note: 'Tikka S + Crispy Wings + Mint Margretta' }),
-  it('deals', 'd4', 'Pizza Combo', one(2947), { note: 'Kafeo M + Crispy Wings + Plain Fries + 2 Mint Margretta' }),
+  it('deals', 'd1', 'Starter Boost', one(549), { note: 'Zinger + Coke' }),
+  it('deals', 'd2', 'Buddy Boost', one(1049), { note: 'Zinger + Fiery Fillet + Coke 500ml' }),
+  it('deals', 'd3', 'Pizza Power-Up', one(1249), { note: 'Tikka S + Crispy Wings + Mint Margretta' }),
+  it('deals', 'd4', 'Pizza Combo', one(2449), { note: 'Kafeo M + Crispy Wings + Plain Fries + 2 Mint Margretta' }),
   it('deals', 'd5', 'Fries Frenzy', one(1999), { note: 'Tikka/Fajita L + Loaded Fries + 1.5L' }),
-  it('deals', 'd6', 'Kafeo Gathering', one(4972), { note: 'Kafeo L, Loaded Fries, Hot & Crispy, Grill Sandwich, Nuggets, Coke 1.5L' }),
+  it('deals', 'd6', 'Kafeo Gathering', one(3999), { note: 'Kafeo L, Loaded Fries, Hot & Crispy, Grill Sandwich, Nuggets, Coke 1.5L' }),
   it('deals', 'd7', 'Pizza Party Special', one(2999), { note: '2 L Tikka/Fajita + 2 dips + 1.5L' }),
 
   it('pizza', 'p1', 'Kafeo Special', sml(999, 1549, 2399), { counts: 'pizza' }),
@@ -46,8 +46,8 @@ export const ITEMS = [
   it('pizza', 'p8', 'Veggies Lover', sml(649, 1099, 1699), { counts: 'pizza' }),
 
   it('burgers', 'b1', 'Molten Lava', one(1099)),
-  it('burgers', 'b2', 'Steak Burger', one(949)),
-  it('burgers', 'b3', 'Out of Control', one(749)),
+  it('burgers', 'b2', 'Steak Burger', one(749)),
+  it('burgers', 'b3', 'Out of Control', one(949)),
   it('burgers', 'b4', 'Swiss Mushroom', one(680)),
   it('burgers', 'b5', 'Fiery Fillet', one(599)),
   it('burgers', 'b6', 'Zinger', one(549)),
@@ -61,7 +61,7 @@ export const ITEMS = [
   it('steak', 's5', 'Black Pepper Steak', one(1099), { counts: 'steak' }),
   it('steak', 's6', 'Baked Mushroom Pasta', one(1099)),
   it('steak', 's7', 'Red Sauce Pasta', one(1099)),
-  it('steak', 's8', 'Fettuccine', one(999)),
+  it('steak', 's8', 'Alfredo', one(999)),
 
   it('sand', 'w1', 'Cheese Lover Sandwich', one(799)),
   it('sand', 'w2', 'Cocktail Sandwich', one(774)),
@@ -73,9 +73,9 @@ export const ITEMS = [
 
   it('sides', 'f1', 'Loaded Fries', one(699)),
   it('sides', 'f2', 'Masala Fries', one(299)),
-  it('sides', 'f3', 'Pizza Fries', one(299)),
+  it('sides', 'f3', 'Pizza Fries', one(749)),
   it('sides', 'f4', 'Jalapeno Cheese Fries', one(599)),
-  it('sides', 'f5', 'Mayo Cheese Fries', one(449)),
+  it('sides', 'f5', 'Mayo Cheese Fries', one(599)),
   it('sides', 'f6', 'Garlic Mayo Fries', one(399)),
   it('sides', 'f7', 'Plain Fries', one(299)),
   it('sides', 'f8', 'Chicken Strips 4pc', one(449)),

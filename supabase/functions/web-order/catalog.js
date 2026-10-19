@@ -22,8 +22,8 @@ const BASE = [
   ['Veggies Lover', 'p8', [649, 1099, 1699], 'pizza'],
   // Burgers
   ['Molten Lava Burger', 'b1', 1099, 'burgers'],
-  ['Steak Burger', 'b2', 949, 'burgers'],
-  ['Out of Control Burger', 'b3', 749, 'burgers'],
+  ['Steak Burger', 'b2', 749, 'burgers'],
+  ['Out of Control Burger', 'b3', 949, 'burgers'],
   ['Swiss Mushroom Burger', 'b4', 680, 'burgers'],
   ['Fiery Fillet Burger', 'b5', 599, 'burgers'],
   ['Zinger Burger', 'b6', 549, 'burgers'],
@@ -38,7 +38,7 @@ const BASE = [
   // Pasta
   ['Baked Mushroom Pasta', 's6', 1099, 'pasta'],
   ['Red Sauce Pasta', 's7', 1099, 'pasta'],
-  ['Fettuccine', 's8', 999, 'pasta'],
+  ['Alfredo', 's8', 999, 'pasta'],
   // Sandwiches & wraps
   ['Cheese Lover Sandwich', 'w1', 799, 'sandwich'],
   ['Cocktail Sandwich', 'w2', 774, 'sandwich'],
@@ -50,9 +50,9 @@ const BASE = [
   // Fries & sides
   ['Loaded Fries', 'f1', 699, 'sides'],
   ['Masala Fries', 'f2', 299, 'sides'],
-  ['Pizza Fries', 'f3', 299, 'sides'],
+  ['Pizza Fries', 'f3', 749, 'sides'],
   ['Jalapeño Cheese Fries', 'f4', 599, 'sides'],
-  ['Mayo Cheese Fries', 'f5', 449, 'sides'],
+  ['Mayo Cheese Fries', 'f5', 599, 'sides'],
   ['Garlic Mayo Fries', 'f6', 399, 'sides'],
   ['Plain Fries', 'f7', 299, 'sides'],
   ['Chicken Strips (4 pc)', 'f8', 449, 'sides'],
