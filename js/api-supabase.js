@@ -66,6 +66,10 @@ export function createSupabaseApi(url, key) {
     async ordersForPhone(phone) {
       return must(await sb.from('orders').select('*').eq('customer_phone', phone).order('created_at', { ascending: false }).limit(20));
     },
+    // Website orders: change only if still waiting, so two counters can't both accept one.
+    async updateIfPending(id, patch) {
+      return must(await sb.from('orders').update(patch).eq('id', id).eq('status', 'pending').select().maybeSingle());
+    },
     async getOrder(id) { return must(await sb.from('orders').select('*').eq('id', id).maybeSingle()); },
 
     // ---- inventory ----

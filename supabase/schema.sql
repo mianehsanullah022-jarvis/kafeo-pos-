@@ -95,7 +95,7 @@ create table if not exists public.orders (
   total numeric not null default 0,
   payment text not null default '',     -- Cash / Card / JazzCash / Easypaisa / COD
   paid boolean not null default false,
-  status text not null default 'new' check (status in ('new', 'preparing', 'ready', 'out', 'done', 'cancelled')),
+  status text not null default 'new' check (status in ('pending', 'new', 'preparing', 'ready', 'out', 'done', 'cancelled')),
   rider_id bigint references public.riders (id),
   reward text not null default ''       -- Buy More Save More freebie, if any
 );
@@ -273,25 +273,27 @@ begin
   ('k9', 'drinks', 'Fresh Lime', '', '[{"k":"","p":299}]'::jsonb, 'bar', 'drink', 75),
   ('k10', 'drinks', 'Mint Margretta', '', '[{"k":"","p":325}]'::jsonb, 'bar', 'drink', 76),
   ('k11', 'drinks', 'Iced Peach Tea', '', '[{"k":"","p":325}]'::jsonb, 'bar', 'drink', 77),
-  ('k12', 'drinks', 'Coke / Sprite', '', '[{"k":"345ml","p":100},{"k":"500ml","p":150},{"k":"1L","p":220},{"k":"1.5L","p":300}]'::jsonb, 'bar', null, 78),
-  ('k13', 'drinks', 'Water', '', '[{"k":"500ml","p":60},{"k":"1.5L","p":100}]'::jsonb, 'bar', null, 79),
-  ('e1', 'dessert', 'Nutella Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 80),
-  ('e2', 'dessert', 'Belgian Chocolate Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 81),
-  ('e3', 'dessert', 'Nuts Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 82),
-  ('a1', 'addons', 'Extra Cheese', 'Pizza topping', '[{"k":"S","p":70},{"k":"M","p":130},{"k":"L","p":200}]'::jsonb, 'kitchen', null, 83),
-  ('a2', 'addons', 'Extra Chicken', 'Pizza topping', '[{"k":"S","p":70},{"k":"M","p":130},{"k":"L","p":200}]'::jsonb, 'kitchen', null, 84),
-  ('a3', 'addons', 'Sausage Topping', 'Pizza topping', '[{"k":"S","p":40},{"k":"M","p":80},{"k":"L","p":120}]'::jsonb, 'kitchen', null, 85),
-  ('a4', 'addons', 'Cheese Slice', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 86),
-  ('a5', 'addons', 'Olives', '', '[{"k":"","p":50}]'::jsonb, 'kitchen', null, 87),
-  ('a6', 'addons', 'Jalapeno', '', '[{"k":"","p":50}]'::jsonb, 'kitchen', null, 88),
-  ('a7', 'addons', 'Mushrooms', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 89),
-  ('a8', 'addons', 'Chicken Patty', '', '[{"k":"","p":200}]'::jsonb, 'kitchen', null, 90),
-  ('a9', 'addons', 'Chicken Fillet', '', '[{"k":"","p":180}]'::jsonb, 'kitchen', null, 91),
-  ('a10', 'addons', 'Honey Mustard Dip', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 92),
-  ('a11', 'addons', 'Peri Peri Dip', '', '[{"k":"","p":90}]'::jsonb, 'kitchen', null, 93);
+  ('k12', 'drinks', 'Coke', '', '[{"k":"345ml","p":100},{"k":"500ml","p":150},{"k":"1L","p":220},{"k":"1.5L","p":300}]'::jsonb, 'bar', null, 78),
+  ('k14', 'drinks', 'Sprite', '', '[{"k":"345ml","p":100},{"k":"500ml","p":150},{"k":"1L","p":220},{"k":"1.5L","p":300}]'::jsonb, 'bar', null, 79),
+  ('k13', 'drinks', 'Water', '', '[{"k":"500ml","p":60},{"k":"1.5L","p":100}]'::jsonb, 'bar', null, 80),
+  ('e1', 'dessert', 'Nutella Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 81),
+  ('e2', 'dessert', 'Belgian Chocolate Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 82),
+  ('e3', 'dessert', 'Nuts Brownie', '', '[{"k":"","p":399}]'::jsonb, 'kitchen', null, 83),
+  ('e4', 'dessert', 'Vanilla Ice Cream', '2 scoops', '[{"k":"","p":350}]'::jsonb, 'kitchen', null, 84),
+  ('a1', 'addons', 'Extra Cheese', 'Pizza topping', '[{"k":"S","p":70},{"k":"M","p":130},{"k":"L","p":200}]'::jsonb, 'kitchen', null, 85),
+  ('a2', 'addons', 'Extra Chicken', 'Pizza topping', '[{"k":"S","p":70},{"k":"M","p":130},{"k":"L","p":200}]'::jsonb, 'kitchen', null, 86),
+  ('a3', 'addons', 'Sausage Topping', 'Pizza topping', '[{"k":"S","p":40},{"k":"M","p":80},{"k":"L","p":120}]'::jsonb, 'kitchen', null, 87),
+  ('a4', 'addons', 'Cheese Slice', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 88),
+  ('a5', 'addons', 'Olives', '', '[{"k":"","p":50}]'::jsonb, 'kitchen', null, 89),
+  ('a6', 'addons', 'Jalapeno', '', '[{"k":"","p":50}]'::jsonb, 'kitchen', null, 90),
+  ('a7', 'addons', 'Mushrooms', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 91),
+  ('a8', 'addons', 'Chicken Patty', '', '[{"k":"","p":200}]'::jsonb, 'kitchen', null, 92),
+  ('a9', 'addons', 'Chicken Fillet', '', '[{"k":"","p":180}]'::jsonb, 'kitchen', null, 93),
+  ('a10', 'addons', 'Honey Mustard Dip', '', '[{"k":"","p":70}]'::jsonb, 'kitchen', null, 94),
+  ('a11', 'addons', 'Peri Peri Dip', '', '[{"k":"","p":90}]'::jsonb, 'kitchen', null, 95);
   end if;
   if not exists (select 1 from public.settings) then
-    insert into public.settings (id, data) values (1, '{"tax_cash_pct":0,"tax_digital_pct":0,"prices_include_tax":false,"tax_number":"","service_pct":0,"service_default_on":true,"round_to":0,"cashier_max_discount_pct":20,"quick_discounts":[5,10,15,20,25,30,50],"discount_reasons":["Bank / card offer","Friend & family","Regular customer","Staff meal","Complaint / recovery","Owner special"],"banks":["HBL","Meezan","UBL","MCB","Alfalah","Standard Chartered"],"delivery_fee":0,"kot_auto":true,"kot_split":true,"receipt_footer":"Thank you for visiting KAFEO — see you again!","receipt_loyalty":true,"day_start_hour":6,"expense_types":["Supplies","Groceries","Utilities","Salary / advance","Rent","Maintenance","Transport / fuel","Marketing","Other"],"paper":"80safe","print_offset_mm":0,"loyalty_stamps":5,"loyalty_discount_pct":50,"tables":["T1","T2","T3","T4","T5","T6","T7","T8","H1","H2"],"bmsm":[{"min":3500,"reward":"Free dessert"},{"min":2500,"reward":"Free fries"},{"min":1500,"reward":"Free drink"}],"incentives":{"pizza":{"label":"Head chef · pizzas","tiers":[[11,200],[16,300],[21,400]]},"steak":{"label":"Kitchen · steak pool","tiers":[[11,300],[15,400],[20,500]]},"drink":{"label":"Servers · drinks pool","tiers":[[36,200],[46,300],[61,400]]}},"incentive_daily_cap":1300}'::jsonb);
+    insert into public.settings (id, data) values (1, '{"tax_cash_pct":0,"tax_digital_pct":0,"prices_include_tax":false,"tax_number":"","service_pct":0,"service_default_on":true,"round_to":0,"cashier_max_discount_pct":20,"quick_discounts":[5,10,15,20,25,30,50],"discount_reasons":["Bank / card offer","Friend & family","Regular customer","Staff meal","Complaint / recovery","Owner special"],"banks":["HBL","Meezan","UBL","MCB","Alfalah","Standard Chartered"],"delivery_fee":0,"kot_auto":true,"kot_split":true,"receipt_footer":"Thank you for visiting KAFEO — see you again!","receipt_loyalty":true,"day_start_hour":6,"expense_types":["Supplies","Groceries","Utilities","Salary / advance","Rent","Maintenance","Transport / fuel","Marketing","Other"],"expense_vendors":["Abbas LPG Gas","Accha Cheez","BBQ Vendor","Chicken","Chicken Tvental Market","Coke","Dawn","Dessert","Fresh Pota Fries","Hico Ice Cream","Horeca Solution","Jalal Sons","K&N''s","Packing Vendor","Pasta Cream Vendor","Prema Milk","Printing Vendor","Sabrosoo","Sawera Store","Vagi BBQ","Vegetable","Vines Ice"],"paper":"80safe","print_offset_mm":0,"loyalty_stamps":5,"loyalty_discount_pct":50,"tables":["T1","T2","T3","T4","T5","T6","T7","T8","H1","H2"],"table_areas":[{"name":"Hall","tables":["H1","H2","H3","H4","H5","H6","H7","H8","H9","H10","H11","H12","H13","H14"]},{"name":"Outdoor (ground floor)","tables":["O1","O2","O3","O4"]}],"bmsm":[{"min":3500,"reward":"Free dessert"},{"min":2500,"reward":"Free fries"},{"min":1500,"reward":"Free drink"}],"incentives":{"pizza":{"label":"Head chef · pizzas","tiers":[[11,200],[16,300],[21,400]]},"steak":{"label":"Kitchen · steak pool","tiers":[[11,300],[15,400],[20,500]]},"drink":{"label":"Servers · drinks pool","tiers":[[36,200],[46,300],[61,400]]}},"incentive_daily_cap":1300}'::jsonb);
   end if;
 end $$;
 
@@ -434,3 +436,23 @@ drop policy if exists "owner manage expenses" on public.expenses;
 create policy "owner manage expenses" on public.expenses for delete using (public.is_owner());
 drop policy if exists "owner edit expenses" on public.expenses;
 create policy "owner edit expenses" on public.expenses for update using (public.is_owner()) with check (public.is_owner());
+
+-- ===== 006_website_orders.sql =====
+-- KAFEO POS · website orders
+-- Orders placed on the KAFEO website arrive through the `web-order` Edge Function
+-- with status 'pending'. They stay out of the kitchen until a cashier taps Accept
+-- on the POS (then they become 'new' like any counter order). Rejected ones are 'cancelled'.
+-- Safe to run more than once.
+
+alter table public.orders drop constraint if exists orders_status_check;
+alter table public.orders add constraint orders_status_check
+  check (status in ('pending', 'new', 'preparing', 'ready', 'out', 'done', 'cancelled'));
+
+-- One POS order per website order reference (the website may retry if the signal drops).
+create unique index if not exists orders_web_ref_uidx
+  on public.orders ((meta->>'web_ref'))
+  where meta ? 'web_ref';
+
+-- Fast look-ups for the anti-spam limits in the Edge Function.
+create index if not exists orders_source_created_idx
+  on public.orders ((meta->>'source'), created_at desc);

@@ -5,7 +5,7 @@ export const num = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 
 export const TYPE_LABEL = { dine: 'Dine-in', take: 'Takeaway', deliv: 'Delivery' };
 export const STATUS_LABEL = {
-  new: 'New', preparing: 'Preparing', ready: 'Ready', out: 'Out for delivery', done: 'Done', cancelled: 'Cancelled'
+  pending: 'Website · waiting', new: 'New', preparing: 'Preparing', ready: 'Ready', out: 'Out for delivery', done: 'Done', cancelled: 'Cancelled'
 };
 
 // Buy More Save More: highest threshold reached wins.

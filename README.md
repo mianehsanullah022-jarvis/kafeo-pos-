@@ -135,9 +135,21 @@ Any printer works through the browser's print dialog. For an 80mm thermal printe
 
 ---
 
+## Website orders (KAFEO website → POS)
+
+Every order placed on the KAFEO website lands on the POS straight away, and the customer's WhatsApp message to 0304 2077720 still opens as a second copy (plus the email copy).
+
+- On the counter, a green **🔔 New website order** bar appears on every screen, the page title shows the count, and a chime repeats every 20 seconds until someone handles it. (Tap the screen once after opening the POS so the browser allows sound.)
+- Tap **Review & accept**: you see the customer, phone (tap to call or WhatsApp), address with map pin, how they'll pay, items with their choices (spice, add-ons) and any **⚠ Check before accepting** warnings (price didn't match the menu, unknown item…). For delivery, type the delivery fee if any.
+- **Accept & send to kitchen** → it becomes a normal order: kitchen ticket prints, it shows on Kitchen / Orders / Delivery, stock goes down, the customer card is saved. **Reject** cancels it (tell the customer).
+- Until accepted, website orders never reach the kitchen screen.
+- How it works: the website calls the Supabase Edge Function [`supabase/functions/web-order`](supabase/functions/web-order/index.ts), which checks every field and re-checks prices against the website menu in [`catalog.js`](supabase/functions/web-order/catalog.js). **If you change a price on the website, change it in `catalog.js` too** and run `node tools/test-web-order.mjs ../kafeo-website/index.html` (orders still arrive if you forget — just with a price warning).
+- Spam protection: max 4 website orders per phone and 10 per connection in 15 minutes; repeats of the same order are ignored.
+- **Optional WhatsApp alert straight to your phone** (works even if the customer never presses Send): message `I allow callmebot to send me messages` to the CallMeBot WhatsApp number (see callmebot.com → WhatsApp), it replies with an API key. Then in Supabase → Edge Functions → Secrets add `CALLMEBOT_PHONE` = `923042077720` and `CALLMEBOT_APIKEY` = your key. Done — no code change.
+
 ## Updating an existing database
 
-If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.) For item photos, also run [`supabase/migrations/003_menu_photos.sql`](supabase/migrations/003_menu_photos.sql) once, for inventory [`supabase/migrations/004_inventory.sql`](supabase/migrations/004_inventory.sql), and for expenses [`supabase/migrations/005_expenses.sql`](supabase/migrations/005_expenses.sql).
+If your database was set up before the discount/tax update, run [`supabase/migrations/002_billing.sql`](supabase/migrations/002_billing.sql) once in the Supabase SQL Editor. (Already applied to the KAFEO project.) For item photos, also run [`supabase/migrations/003_menu_photos.sql`](supabase/migrations/003_menu_photos.sql) once, for inventory [`supabase/migrations/004_inventory.sql`](supabase/migrations/004_inventory.sql), and for expenses [`supabase/migrations/005_expenses.sql`](supabase/migrations/005_expenses.sql), and for website orders [`supabase/migrations/006_website_orders.sql`](supabase/migrations/006_website_orders.sql) (already applied).
 
 ## Good to know
 

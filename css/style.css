@@ -584,3 +584,17 @@ a.tool { text-decoration: none; }
 .area-head b { font-size: 15px; }
 #grid .grid-head { grid-column: 1 / -1; margin: 10px 2px 0; font-size: 15px; font-weight: 800; color: var(--accent-ink); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 #grid .grid-head:first-child { margin-top: 0; }
+
+/* ---------- website orders ---------- */
+.tag.web { background: #1f6f5c; color: #fff; margin-left: 6px; }
+.web-alert { padding: 10px 16px 0; }
+.web-alert > button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; border-radius: 12px; border: 2px solid #1f6f5c;
+  background: #e3f3ee; color: #10392f; font: inherit; font-size: 16px; text-align: left; cursor: pointer; animation: webPulse 1.6s ease-in-out infinite; }
+.web-alert .grow { flex: 1; }
+.web-alert .web-bell { font-size: 24px; }
+@keyframes webPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(31, 111, 92, .45); } 50% { box-shadow: 0 0 0 8px rgba(31, 111, 92, 0); } }
+@media (prefers-reduced-motion: reduce) { .web-alert > button { animation: none; } }
+.web-card { border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 14px; display: grid; gap: 8px; }
+.web-card.warn { border-color: #d39b2a; background: #fff8e8; }
+.web-flags { background: #fff1cc; border: 1px solid #e3b44a; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #5c4100; }
+.web-flags ul { margin: 4px 0 0 18px; padding: 0; }

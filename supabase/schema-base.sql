@@ -95,7 +95,7 @@ create table if not exists public.orders (
   total numeric not null default 0,
   payment text not null default '',     -- Cash / Card / JazzCash / Easypaisa / COD
   paid boolean not null default false,
-  status text not null default 'new' check (status in ('new', 'preparing', 'ready', 'out', 'done', 'cancelled')),
+  status text not null default 'new' check (status in ('pending', 'new', 'preparing', 'ready', 'out', 'done', 'cancelled')),
   rider_id bigint references public.riders (id),
   reward text not null default ''       -- Buy More Save More freebie, if any
 );
