@@ -2,7 +2,7 @@
 
 Point-of-sale for KAFEO Café, Shadman, Lahore. It runs in any browser (counter PC, tablet, phone), keeps every device in sync live, and only staff with a login can open it.
 
-**Screens:** Order & billing · Kitchen display · Delivery & riders · Customers & loyalty · Reports & staff incentives · Menu & prices · Settings
+**Screens:** Dashboard · Order & billing · Kitchen display · Delivery & riders · Customers & loyalty · Reports & staff incentives · Menu & prices · Settings
 
 This repo is the POS only. The KAFEO website lives in its own repo and is not touched by this one.
 
@@ -114,6 +114,8 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 - **Recipes & food cost** tab (owner edits): for each menu item and size, list the ingredients and amounts. Shows food cost and margin per item.
 - Stock goes down **automatically** when an order is added (only new items when a bill is edited) and comes back if the order is cancelled. Every change is in **History**.
 - Items at or below their alert level show a red number on the **Stock** button.
+
+**Dashboard (owner)** — first button in the side menu. Live **Right now** cards (website orders waiting, kitchen queue, late tickets, running bills, deliveries out, low stock — tap any to jump there), **Net sales** with the change vs yesterday at the same time, paid orders, average bill, website orders and their share, expenses, sales − expenses, discounts, a **sales by hour / by day** chart against the previous period (hover for numbers, or *View as table*), sales by order type, payment method, category, top 8 items, low stock and the latest orders. Periods: Today, Yesterday, Last 7 days, Last 30 days, This month. Updates by itself when orders change.
 
 **Reports (owner)** — **Reports center** with 18 reports, each with a **start date & time** and **end date & time** (quick buttons: Today, Yesterday, This week, Last 7 days, This month, Last month — “Today” runs 6 AM to 6 AM, changeable in Settings). Every report can be viewed, **downloaded as PDF**, printed on **A4**, printed on the **thermal** printer, or saved for **Excel (CSV)**:
 Full Report · Order Report · Order Detail · Items · Category-wise Items · Hourly Sales · Payment Methods · Profit / Loss · Sales Tax (PRA) · Discounts · Expenses · Void / Cancelled · Unpaid Bills · Staff / Cashier · Inventory Consumption · Purchases · Stocks · Specific Stock Item.
