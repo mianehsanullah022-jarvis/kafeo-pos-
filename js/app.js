@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.19-2149';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.19-2149';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.19-2149';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-1450';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-1450';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-1450';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.19-2149';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.19-2149';
-import { pdfBlob } from './pdf.js?v=2026.10.19-2149';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.19-2149';
+} from './logic.js?v=2026.10.20-1450';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-1450';
+import { pdfBlob } from './pdf.js?v=2026.10.20-1450';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-1450';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.19-2149')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.20-1450')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -287,8 +287,11 @@ function routeFromHash() {
 }
 window.addEventListener('hashchange', () => {
   if (!S.me?.profile) return;
+  const was = S.route;
   routeFromHash();
   renderShell();
+  // Coming back to the dashboard: show the last numbers, faded, and fetch fresh ones straight away.
+  if (S.route === 'dashboard' && was !== 'dashboard' && S.dash.loaded) run(async () => { await refreshOrders(); await refreshDash(); });
 });
 
 function renderShell() {
@@ -316,6 +319,7 @@ function renderShell() {
     const kind = S.m?.kind;
     S.m = null;
     if (kind === 'details' && S.route === 'order') renderSummary();
+    if (S.route === 'dashboard' && S.dash.needsRender) { S.dash.needsRender = false; renderScreen(); }
   });
   renderLiveDot();
   renderScreen();
@@ -1125,6 +1129,7 @@ function dashRanges(range) {
 }
 async function loadDash() {
   const d = S.dash;
+  const key = [d.range, d.cfrom, d.cto].join('|');
   const r = dashRanges(d.range);
   const safe = (p) => p.catch((e) => { console.warn('Dashboard:', e.message); return null; });
   // The totals compare like with like (e.g. today so far vs yesterday up to the same time);
@@ -1136,6 +1141,7 @@ async function loadDash() {
     safe(api.expensesBetween(r.pFrom.toISOString(), r.pTo.toISOString()))
   ]);
   const prev = r.chartTo ? prevChart.filter((o) => new Date(o.created_at) < r.pTo) : prevChart;
+  if (key !== [d.range, d.cfrom, d.cto].join('|')) { d.again = true; return; }   // period changed while loading — load the new one
   Object.assign(d, { orders, prev, prevChart, exp, pexp, r, loaded: true, at: new Date() });
 }
 const isWeb = (o) => o.meta?.source === 'website';
@@ -1240,7 +1246,14 @@ function renderDashboard(el) {
   if (!d.cfrom) { const t = businessDayStart(); d.cto = ymdLocal(t); d.cfrom = ymdLocal(new Date(t.getTime() - 89 * DAY)); }
   if (!d.loaded) {
     el.innerHTML = '<div class="empty">Loading dashboard…</div>';
-    if (!d.loading) { d.loading = true; run(async () => { await loadDash(); }).finally(() => { d.loading = false; if (S.route === 'dashboard') renderScreen(); }); }
+    if (!d.loading) {
+      d.loading = true; d.again = false;
+      run(async () => { await loadDash(); }).finally(() => {
+        d.loading = false;
+        if (S.route !== 'dashboard') return;
+        if (d.again && d.loaded) { d.again = false; refreshDash(); } else renderScreen();
+      });
+    }
     return;
   }
   const r = d.r;
@@ -1462,14 +1475,24 @@ document.addEventListener('focusout', (e) => { if (e.target.closest?.('.hb')) hb
 let dashResize = null;
 window.addEventListener('resize', () => { clearTimeout(dashResize); dashResize = setTimeout(() => { if (S.route === 'dashboard' && S.dash.loaded) drawDashTrend(dashBuckets()); }, 150); });
 // Re-load the numbers when orders change (the old numbers stay on screen, faded, until the new ones arrive).
+// Never drops an update: if a reload is already running, one more runs straight after it.
 async function refreshDash() {
-  if (S.route !== 'dashboard' || !S.dash.loaded || S.dash.loading) return;
-  S.dash.loading = true;
+  const d = S.dash;
+  if (S.route !== 'dashboard') return;
+  if (d.loading) { d.again = true; return; }
+  if (!d.loaded) return;
+  d.loading = true;
   $('#screen')?.classList.add('refreshing');
-  try { await loadDash(); } finally { S.dash.loading = false; }
-  if (S.route === 'dashboard' && !S.m) renderScreen();
-  $('#screen')?.classList.remove('refreshing');
+  try {
+    do { d.again = false; await loadDash(); } while (d.again && S.route === 'dashboard');
+  } catch (e) { console.warn('Dashboard refresh failed:', e.message); }
+  finally { d.loading = false; $('#screen')?.classList.remove('refreshing'); }
+  if (S.route !== 'dashboard') return;
+  if (S.m) d.needsRender = true;   // a pop-up is open — redraw as soon as it closes
+  else renderScreen();
 }
+// Safety net: re-check every 20 seconds while the dashboard is on screen (in case the live connection drops).
+setInterval(() => { if (S.me?.profile && S.route === 'dashboard' && !document.hidden) refreshOrders().then(refreshDash).catch(() => {}); }, 20000);
 
 // =====================================================================
 // REPORTS CENTER — pick a report, choose start & end date/time, view / PDF / print / Excel
