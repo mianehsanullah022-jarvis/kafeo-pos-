@@ -105,7 +105,7 @@ export const SUPABASE_ANON_KEY = 'eyJhbGciOi...';
 - Each bill: **Take payment**, **Add items** (new items are flagged “+1 NEW” in the kitchen), **Print bill**. The owner can also cancel.
 - **Paid today** lists finished bills for reprinting receipts.
 
-**Kitchen** — new orders beep. *Start preparing → Mark ready → Served / Picked up.* Tickets turn red after 15 minutes. Filter by Kitchen or Bar & coffee. Tap the screen once after opening it so the browser allows the beep.
+**Kitchen** — new orders beep. *Start preparing → Mark ready → Served / Picked up.* Tickets turn red after 15 minutes — the owner can change this any time (Kitchen screen “Late after” picker, or Settings → “Kitchen order is late after”). Filter by Kitchen or Bar & coffee. Tap the screen once after opening it so the browser allows the beep.
 
 **Delivery** — assign a rider → *Out for delivery* → *Delivered + cash*. Shows cash each rider should hand in.
 

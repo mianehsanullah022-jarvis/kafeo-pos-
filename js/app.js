@@ -1,23 +1,25 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-1505';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-1505';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-1505';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-1546';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-1546';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-1546';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.20-1505';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-1505';
-import { pdfBlob } from './pdf.js?v=2026.10.20-1505';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-1505';
+} from './logic.js?v=2026.10.20-1546';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-1546';
+import { pdfBlob } from './pdf.js?v=2026.10.20-1546';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-1546';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.20-1505')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.20-1546')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
-const LATE_MIN = 15;
+// Minutes before a kitchen order counts as late (owner can change it in Settings or on the Kitchen screen).
+const LATE_CHOICES = [5, 10, 15, 20, 25, 30, 40, 45, 60];
+const lateMin = () => Math.max(1, Math.min(180, Number(S.settings?.late_min) || 15));
 const NOTE_CHIPS = ['No onions', 'Extra spicy', 'Less spicy', 'Extra cheese', 'No mayo', 'Well done', 'Less sugar', 'No ice'];
 
 // ---------- helpers ----------
@@ -221,7 +223,7 @@ function onLive(kind, payload) {
   if (kind === 'settings') return run(async () => {
     S.settings = { ...DEFAULT_SETTINGS, ...(await api.loadSettings()) };
     S.riders = await api.listRiders();
-    if (S.route === 'order') renderSummary(); else if (S.route === 'dashboard') refreshDash(); else rerenderIf(['delivery', 'settings']);
+    if (S.route === 'order') renderSummary(); else if (S.route === 'dashboard') refreshDash(); else rerenderIf(['delivery', 'settings', 'kitchen']);
   });
   if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); });
   if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); return; }
@@ -1375,7 +1377,7 @@ function dashStatus(o) {
 function dashLive() {
   const web = webPending();
   const kq = S.open.filter((o) => ['new', 'preparing', 'ready'].includes(o.status));
-  const late = kq.filter((o) => o.status !== 'ready' && minutesSince(o.created_at) >= LATE_MIN);
+  const late = kq.filter((o) => o.status !== 'ready' && minutesSince(o.created_at) >= lateMin());
   const bills = unpaidBills();
   const out = S.open.filter((o) => o.type === 'deliv' && o.status === 'out');
   const low = S.inv.ready ? lowStock() : [];
@@ -1383,7 +1385,7 @@ function dashLive() {
   return [
     { icon: '🔔', value: web.length, label: 'Website orders waiting', sub: web.length ? fmt(sumBy(web, (o) => o.total)) : 'all handled', tone: web.length ? 'web' : '', act: 'webOpen' },
     { icon: '🍳', value: kq.length, label: 'In the kitchen', sub: `${n('new')} new · ${n('preparing')} cooking · ${n('ready')} ready`, tone: '', href: '#kitchen' },
-    { icon: '⏱', value: late.length, label: `Waiting over ${LATE_MIN} min`, sub: late.length ? `not ready yet · longest ${Math.max(...late.map((o) => minutesSince(o.created_at)))} min` : 'all orders on time', tone: late.length ? 'crit' : '', href: '#kitchen' },
+    { icon: '⏱', value: late.length, label: `Waiting over ${lateMin()} min`, sub: late.length ? `not ready yet · longest ${Math.max(...late.map((o) => minutesSince(o.created_at)))} min` : 'all orders on time', tone: late.length ? 'crit' : '', href: '#kitchen' },
     { icon: '🧾', value: bills.length, label: 'Running bills', sub: fmt(sumBy(bills, (o) => o.total)) + ' to collect', tone: '', href: '#orders' },
     { icon: '🛵', value: out.length, label: 'Out for delivery', sub: '', tone: '', href: '#delivery' },
     { icon: '📦', value: low.length, label: 'Low stock items', sub: low.length ? 'buy soon' : 'all fine', tone: low.length ? 'warnt' : '', href: '#inventory' }
@@ -2003,7 +2005,8 @@ function renderKitchen(el) {
   };
   el.innerHTML = `
     <div class="screen-head">
-      <h1>Kitchen</h1><span class="muted">New orders beep · tickets turn red after ${LATE_MIN} min</span>
+      <h1>Kitchen</h1><span class="muted">New orders beep · tickets turn red after ${lateMin()} min</span>
+      ${isOwner() ? `<label class="late-pick">Late after<select data-late aria-label="Minutes before an order counts as late">${[...new Set([...LATE_CHOICES, lateMin()])].sort((a, b) => a - b).map((m) => `<option value="${m}" ${m === lateMin() ? 'selected' : ''}>${m} min</option>`).join('')}</select></label>` : ''}
       <span class="grow"></span>
       ${[['all', 'All stations'], ['kitchen', 'Kitchen'], ['bar', 'Bar & coffee']].map(([v, l]) =>
         `<button type="button" class="pill ${S.station === v ? 'on' : ''}" aria-pressed="${S.station === v}" data-act="station" data-v="${v}">${l}</button>`).join('')}
@@ -2012,7 +2015,7 @@ function renderKitchen(el) {
 }
 function ticketK(o, items) {
   const age = minutesSince(o.created_at);
-  const late = age >= LATE_MIN && o.status !== 'ready';
+  const late = age >= lateMin() && o.status !== 'ready';
   const where = o.type === 'dine' ? `Table ${esc(o.table_no)}` : o.type === 'take' ? `Takeaway${o.customer_name ? ' · ' + esc(o.customer_name) : ''}` : 'Delivery';
   let btn;
   if (o.status === 'new') btn = `<button type="button" class="btn kbtn-start" data-act="kstatus" data-id="${o.id}" data-v="preparing">Start preparing</button>`;
@@ -2318,6 +2321,7 @@ function renderSettings(el) {
       <label class="check"><input type="checkbox" name="service_default_on" ${s.service_default_on !== false ? 'checked' : ''}> Add service charge to dine-in orders by default (cashier can switch it off per order)</label>
       <div class="cols">
         <label class="field">Tables by area — one area per line (e.g. Hall: H1-H14)<textarea name="table_areas" style="min-height:70px">${esc(areasText())}</textarea></label>
+        <label class="field">Kitchen order is late after (minutes) — turns red on the Kitchen screen and counts on the Dashboard<input name="late_min" type="number" min="1" max="180" step="1" inputmode="numeric" value="${lateMin()}"></label>
         <label class="field">Business day starts at (for “Today” in reports)<select name="day_start_hour">${Array.from({ length: 13 }, (_, h) => `<option value="${h}" ${Number(s.day_start_hour ?? 6) === h ? 'selected' : ''}>${h === 0 ? '12:00 midnight' : h + ':00 AM'}</option>`).join('')}</select></label>
       </div>
       <label class="field">Expense types — one per line<textarea name="expense_types" style="min-height:70px">${esc((s.expense_types || []).join('\n'))}</textarea></label>
@@ -3053,6 +3057,7 @@ const SUBMIT = {
       delivery_fee: Math.max(0, Number(form.delivery_fee.value) || 0), round_to: Number(form.round_to.value) || 0,
       ...(() => { const areas = parseAreas(form.table_areas.value); if (!areas.length) throw new Error('Add at least one table'); return { table_areas: areas, tables: areas.flatMap((a) => a.tables) }; })(),
       day_start_hour: Number(form.day_start_hour.value) || 0,
+      late_min: Math.max(1, Math.min(180, Math.round(Number(form.late_min.value) || 15))),
       expense_types: form.expense_types.value.split('\n').map((l) => l.trim()).filter(Boolean),
       cashier_max_discount_pct: pct(form.cashier_max_discount_pct.value),
       quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),
@@ -3141,6 +3146,11 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.dataset.late !== undefined && isOwner()) {
+    const v = Number(t.value);
+    run(async () => { const data = { ...S.settings, late_min: v }; await api.saveSettings(data); S.settings = data; renderScreen(); toast(`Orders now count as late after ${v} minutes — on every screen`); });
+    return;
+  }
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
   if (t.dataset.exr && S.ex) { if (t.value) { S.ex[t.dataset.exr] = t.value; S.ex.preset = 'custom'; S.ex.loaded = false; renderScreen(); } return; }
   if (t.dataset.excat !== undefined && S.ex) { S.ex.cat = t.value; renderScreen(); return; }

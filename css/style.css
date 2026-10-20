@@ -675,3 +675,5 @@ a.tool { text-decoration: none; }
 .dash-custom { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
 .dash-custom .field { min-width: 160px; }
 .dash-quick { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 220px; }
+.late-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.late-pick select { min-height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); padding: 0 8px; font-weight: 800; color: var(--ink); }
