@@ -108,6 +108,10 @@ export function createSupabaseApi(url, key) {
     async addExpense(e) { return must(await sb.from('expenses').insert(e).select().single()); },
     async updateExpense(id, patch) { return must(await sb.from('expenses').update(patch).eq('id', id).select().single()); },
     async deleteExpense(id) { must(await sb.from('expenses').delete().eq('id', id)); },
+    // ---- shift closing ----
+    async listClosings(limit = 60) { return must(await sb.from('shift_closings').select('*').order('shift_to', { ascending: false }).limit(limit)); },
+    async addClosing(c) { return must(await sb.from('shift_closings').insert(c).select().single()); },
+    async deleteClosing(id) { must(await sb.from('shift_closings').delete().eq('id', id)); },
     async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
 
     async getCustomer(phone) { return must(await sb.from('customers').select('*').eq('phone', phone).maybeSingle()); },
@@ -129,6 +133,7 @@ export function createSupabaseApi(url, key) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => cb('settings'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, () => cb('stock'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => cb('expenses'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_closings' }, () => cb('closings'))
         .subscribe((status) => cb('status', status));
       return () => sb.removeChannel(ch);
     }

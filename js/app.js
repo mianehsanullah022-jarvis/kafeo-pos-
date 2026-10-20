@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-0009';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-0009';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0009';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-0019';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-0019';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0019';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.21-0009';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-0009';
-import { pdfBlob } from './pdf.js?v=2026.10.21-0009';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-0009';
+} from './logic.js?v=2026.10.21-0019';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-0019';
+import { pdfBlob } from './pdf.js?v=2026.10.21-0019';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-0019';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.21-0009')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.21-0019')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -48,6 +48,7 @@ const ICON = {
   box: 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10',
   wallet: 'M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z M3 7l11-4 2 4 M16.5 14h.01',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  cashup: 'M3 6h18v12H3z M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6 M6 9v.01 M18 15v.01',
   dash: 'M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z',
   web: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M3 12h18 M12 3c3 3.5 3 14.5 0 18 M12 3c-3 3.5-3 14.5 0 18'
 };
@@ -100,6 +101,7 @@ const ROUTES = [
   { id: 'customers', label: 'Loyalty', roles: ['owner', 'cashier'] },
   { id: 'inventory', label: 'Stock', roles: ['owner', 'cashier', 'kitchen'], icon: 'box' },
   { id: 'expenses', label: 'Expenses', roles: ['owner', 'cashier'], icon: 'wallet' },
+  { id: 'closing', label: 'Shift closing', roles: ['owner', 'cashier'], icon: 'cashup' },
   { id: 'reports', label: 'Reports', roles: ['owner'] },
   { id: 'menu', label: 'Menu', roles: ['owner'] },
   { id: 'settings', label: 'Settings', roles: ['owner'] }
@@ -120,6 +122,7 @@ const S = {
   inv: { ready: null, stock: [], recipes: [], moves: [], tab: 'stock', q: '', filter: 'all', rCat: null, rItem: null, draft: {}, histKind: 'all', movesLoaded: false },
   mcat: null,
   ex: null,      // expenses screen
+  cl: null,      // shift closing screen
   dash: { range: 'today', loaded: false, loading: false }
 };
 const role = () => S.me?.profile?.role;
@@ -226,7 +229,8 @@ function onLive(kind, payload) {
     if (S.route === 'order') renderSummary(); else if (S.route === 'dashboard') refreshDash(); else rerenderIf(['delivery', 'settings', 'kitchen']);
   });
   if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); else rcLiveRefresh(); });
-  if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); else rcLiveRefresh(); return; }
+  if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); else if (S.route === 'closing') clRefreshLive(); else rcLiveRefresh(); return; }
+  if (kind === 'closings') { if (S.cl && S.route === 'closing') clRefreshLive(); else if (S.cl) S.cl.loaded = false; return; }
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
 function scheduleRefresh() {
@@ -241,6 +245,7 @@ function scheduleRefresh() {
     else if (S.route === 'customers' && S.cs.sel) { await selectCustomer(S.cs.sel.phone, true); }
     else if (S.route === 'dashboard') { await refreshDash(); }
     else if (S.route === 'reports') { rcLiveRefresh(); }
+    else if (S.route === 'closing') { clRefreshLive(); }
     else rerenderIf(['kitchen', 'delivery', 'orders']);
   }), 250);
 }
@@ -484,7 +489,7 @@ async function rejectWebOrder(id) {
 function renderScreen() {
   const el = $('#screen');
   if (!el) return;
-  const map = { dashboard: renderDashboard, expenses: renderExpenses, inventory: renderInventory, order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
+  const map = { dashboard: renderDashboard, expenses: renderExpenses, closing: renderClosing, inventory: renderInventory, order: renderOrder, orders: renderOrders, kitchen: renderKitchen, delivery: renderDelivery, reports: renderReports, customers: renderCustomers, menu: renderMenu, settings: renderSettings };
   (map[S.route] || renderOrder)(el);
 }
 
@@ -1756,6 +1761,190 @@ function renderExpenses(el) {
 }
 
 // =====================================================================
+// SHIFT CLOSING — cash-up at the end of a shift, laid out like KAFEO's paper closing sheet.
+// Sales, card, discount and expenses come from the POS. The till count = cash notes + every
+// loan / company slip that is kept in the till and counted as cash.
+// =====================================================================
+const CL_NOTES = [5000, 1000, 500, 100, 50, 20, 10];
+const CASH_METHODS = ['Cash', 'Cash (COD)'];
+const clN = (v) => Math.round(Number(String(v ?? '').replace(/,/g, '')) || 0);
+function clBlankForm(last) {
+  return {
+    shift_name: '', received: '', received_from: S.settings.closing_received_from || 'Naseer Sb',
+    opening: last ? String(Math.round(Number(last.till_cash) || 0)) : '', notes: {}, coins: '',
+    // Loans / slips that were in the till at the last closing are usually still there — start with them.
+    slips: last && Array.isArray(last.slips) ? last.slips.map((s) => ({ label: s.label, amount: String(s.amount), carried: true })) : [],
+    remarks: ''
+  };
+}
+async function clLoad(keepForm) {
+  const c = S.cl;
+  try { c.history = await api.listClosings(60); c.ready = true; } catch (e) { c.history = []; c.ready = false; console.warn('Shift closing not set up:', e.message); }
+  c.last = c.history[0] || null;
+  // Exact time (to the second) the last shift closed, so nothing is counted twice or missed.
+  if (!c.fromSet) { c.fromIso = c.last ? new Date(c.last.shift_to).toISOString() : businessDayStart().toISOString(); c.from = toLocalInput(new Date(c.fromIso)); }
+  else c.fromIso = new Date(c.from).toISOString();
+  if (!c.toSet) c.to = toLocalInput(new Date(Date.now() + 60000));
+  if (!keepForm || !c.f) c.f = clBlankForm(c.last);
+  const from = c.fromIso, to = new Date(c.to).toISOString();
+  const [orders, exp] = await Promise.all([api.ordersBetween(from, to), api.expensesBetween(from, to).catch(() => [])]);
+  const paid = orders.filter((o) => o.paid && o.status !== 'cancelled');
+  const cash = paid.filter((o) => CASH_METHODS.includes(o.payment)).reduce((a, o) => a + Number(o.total || 0), 0);
+  const all = paid.reduce((a, o) => a + Number(o.total || 0), 0);
+  const byPay = {};
+  paid.filter((o) => !CASH_METHODS.includes(o.payment)).forEach((o) => { const k = o.payment || 'Other'; byPay[k] = (byPay[k] || 0) + Number(o.total || 0); });
+  const unpaid = orders.filter((o) => !o.paid && !['cancelled', 'pending'].includes(o.status));
+  c.sales = {
+    cash, card: all - cash, byPay, total: all, orders: paid.length,
+    discount: paid.reduce((a, o) => a + Number(o.discount || 0), 0),
+    unpaid: unpaid.reduce((a, o) => a + Number(o.total || 0), 0), unpaidCount: unpaid.length
+  };
+  c.expCash = exp.filter((e) => e.method === 'Cash').reduce((a, e) => a + Number(e.amount), 0);
+  c.expOther = exp.filter((e) => e.method !== 'Cash').reduce((a, e) => a + Number(e.amount), 0);
+  c.expList = exp.filter((e) => e.method === 'Cash');
+  c.loaded = true;
+}
+function clCalc() {
+  const c = S.cl, f = c.f, s = c.sales;
+  const notesCash = CL_NOTES.reduce((a, d) => a + d * clN(f.notes[d]), 0) + clN(f.coins);
+  const slips = f.slips.filter((x) => clN(x.amount) || String(x.label || '').trim());
+  const slipsTotal = slips.reduce((a, x) => a + clN(x.amount), 0);
+  const opening = clN(f.opening), received = clN(f.received);
+  const totalCash = opening + s.cash + received;
+  const remaining = totalCash - c.expCash;
+  const till = notesCash + slipsTotal;
+  return { opening, received, totalCash, remaining, notesCash, slips, slipsTotal, till, difference: remaining - till };
+}
+// Difference as on the sheet: final cash remaining − final cash in till. Positive = short, negative = extra.
+const clDiffText = (d) => (Math.round(d) === 0 ? 'Matched ✓' : d > 0 ? `Short by ${fmt(d)}` : `Extra ${fmt(-d)}`);
+const clDiffColor = (d) => (Math.round(d) === 0 ? 'var(--ok, #1f7a4d)' : d > 0 ? 'var(--warn)' : '#9a6a00');
+function clInit() { if (!S.cl) S.cl = { loaded: false, ready: true, history: [], fromSet: false, toSet: false, f: null }; }
+function clPaint() {
+  // Updates only the worked-out numbers, so typing in the boxes is never interrupted.
+  const k = clCalc();
+  const set = (key, v) => document.querySelectorAll(`[data-clv="${key}"]`).forEach((el) => { el.textContent = v; });
+  set('opening', fmt(k.opening)); set('received', fmt(k.received)); set('totalCash', fmt(k.totalCash)); set('remaining', fmt(k.remaining));
+  set('notesCash', fmt(k.notesCash)); set('slipsTotal', fmt(k.slipsTotal)); set('till', fmt(k.till)); set('diff', clDiffText(k.difference));
+  document.querySelectorAll('[data-clv=diff]').forEach((el) => { el.style.color = clDiffColor(k.difference); });
+  CL_NOTES.forEach((d) => set('n' + d, fmt(d * clN(S.cl.f.notes[d]))));
+}
+function renderClosing(el) {
+  clInit();
+  el.className = 'screen';
+  const c = S.cl, owner = isOwner();
+  if (!c.loaded) { el.innerHTML = '<div class="empty">Working out this shift…</div>'; run(async () => { await clLoad(true); renderScreen(); }); return; }
+  const s = c.sales, f = c.f, k = clCalc();
+  const line = (label, value, opts = {}) => `<div class="cl-line ${opts.cls || ''}"><span>${label}${opts.sub ? `<small>${opts.sub}</small>` : ''}</span><b ${opts.key ? `data-clv="${opts.key}"` : ''}>${value}</b></div>`;
+  const slipNames = [...new Set(c.history.flatMap((h) => (h.slips || []).map((x) => x.label)).filter(Boolean))];
+  el.innerHTML = `
+    <div class="screen-head"><h1>Shift closing</h1><span class="muted">${esc(rdt(new Date(c.from)))} → ${c.toSet ? esc(rdt(new Date(c.to))) : 'now'}</span></div>
+    ${c.ready ? '' : '<div class="error" style="margin-bottom:12px">Shift closing needs a one-time database update: run supabase/migrations/008_shift_closings.sql in Supabase. You can still work it out and print it, but it won’t be saved.</div>'}
+    ${s.unpaidCount ? `<div class="cl-warn">${s.unpaidCount} bill${s.unpaidCount > 1 ? 's are' : ' is'} still unpaid (${fmt(s.unpaid)}) — not counted in sales. Take payment in Orders first, then close.</div>` : ''}
+    <div class="row wrap" style="margin-bottom:14px">
+      <label class="field ex-date">Shift started<input type="datetime-local" data-clr="from" value="${esc(c.from)}" ${owner ? '' : 'disabled'}></label>
+      <label class="field ex-date">Shift ends<input type="datetime-local" data-clr="to" value="${esc(c.to)}" ${owner ? '' : 'disabled'}></label>
+      ${owner && (c.fromSet || c.toSet) ? '<button type="button" class="btn" data-act="clResetRange">Back to: since last closing → now</button>' : ''}
+      <label class="field ex-date">Shift / name<input data-cl="shift_name" value="${esc(f.shift_name)}" placeholder="e.g. Morning, Night, Ali’s shift"></label>
+      <span class="grow"></span>
+      <button type="button" class="btn" data-act="clReload">Refresh numbers</button>
+    </div>
+    <div class="cl-grid">
+      <div class="panel cl-sheet">
+        <h2>Sales <span class="muted small">· ${s.orders} paid orders · from the POS</span></h2>
+        ${line('Cash sales', fmt(s.cash))}
+        ${line('Card / bank sale', fmt(s.card), { sub: Object.entries(s.byPay).map(([m, v]) => `${esc(m)} ${num(v)}`).join(' · ') })}
+        ${line('Sale discount', fmt(s.discount))}
+        ${line('Total sale', fmt(s.total), { cls: 'cl-tot' })}
+        <h2 style="margin-top:18px">Cash</h2>
+        <div class="cl-line"><span>Received from <input class="cl-inline" data-cl="received_from" value="${esc(f.received_from)}" aria-label="Received from"></span>
+          <input class="cl-amt" data-cl="received" type="number" min="0" step="1" inputmode="numeric" value="${esc(f.received)}" placeholder="0" aria-label="Amount received"></div>
+        ${line('Cash sale', fmt(s.cash))}
+        <div class="cl-line"><span>Opening balance<small>${c.last ? `cash in till at last closing (${esc(fmtDate(c.last.shift_to))} ${esc(fmtTime(c.last.shift_to))}): ${fmt(c.last.till_cash)}` : 'cash in the till when the shift started'}</small></span>
+          <input class="cl-amt" data-cl="opening" type="number" min="0" step="1" inputmode="numeric" value="${esc(f.opening)}" placeholder="0" aria-label="Opening balance"></div>
+        ${line('Total cash', fmt(k.totalCash), { key: 'totalCash', cls: 'cl-tot', sub: 'opening + cash sale + received' })}
+        ${line('Expenses (cash)', '− ' + fmt(c.expCash), { sub: `${c.expList.length} paid from the till${c.expOther ? ` · ${fmt(c.expOther)} more paid by card/bank, not from the till` : ''}` })}
+        ${line('Final cash remaining', fmt(k.remaining), { key: 'remaining', cls: 'cl-tot cl-big' })}
+      </div>
+      <div class="panel cl-sheet">
+        <h2>Count the till</h2>
+        <div class="cl-notes">${CL_NOTES.map((d) => `<label><span>${num(d)} ×</span><input data-cln="${d}" type="number" min="0" step="1" inputmode="numeric" value="${esc(f.notes[d] || '')}" placeholder="0"><b data-clv="n${d}">${fmt(d * clN(f.notes[d]))}</b></label>`).join('')}
+          <label><span>Coins / loose</span><input data-cl="coins" type="number" min="0" step="1" inputmode="numeric" value="${esc(f.coins)}" placeholder="Rs"><b></b></label></div>
+        ${line('Cash notes', fmt(k.notesCash), { key: 'notesCash' })}
+        <h2 style="margin-top:14px">Loans &amp; slips in the till <span class="muted small">· counted as cash</span></h2>
+        <div class="muted small" style="margin-bottom:8px">Company-issue, staff advance, IOU — anything kept in the till in place of cash. ${f.slips.some((x) => x.carried) ? 'Slips from the last closing are filled in — remove any that were paid back.' : ''}</div>
+        <datalist id="cl-slip-names">${slipNames.map((v) => `<option value="${esc(v)}">`).join('')}</datalist>
+        <div class="cl-slips">${f.slips.map((x, i) => `<div class="cl-slip">
+            <input data-cls="${i}" data-k="label" list="cl-slip-names" value="${esc(x.label)}" placeholder="Name / company / reason">
+            <input class="cl-amt" data-cls="${i}" data-k="amount" type="number" min="0" step="1" inputmode="numeric" value="${esc(x.amount)}" placeholder="Rs">
+            <button type="button" class="icon-btn" style="width:38px;height:38px" data-act="clSlipDel" data-i="${i}" aria-label="Remove">${icon('x', 16)}</button></div>`).join('')}</div>
+        <button type="button" class="btn" data-act="clSlipAdd" style="margin:6px 0 10px">+ Add loan / slip</button>
+        ${line('Loans &amp; slips', fmt(k.slipsTotal), { key: 'slipsTotal' })}
+        ${line('Final cash in till', fmt(k.till), { key: 'till', cls: 'cl-tot cl-big', sub: 'cash notes + loans & slips' })}
+        <div class="cl-diff"><span>Difference<small>final cash remaining − final cash in till</small></span><b data-clv="diff" style="color:${clDiffColor(k.difference)}">${clDiffText(k.difference)}</b></div>
+        <label class="field" style="margin-top:10px">Remarks<input data-cl="remarks" value="${esc(f.remarks)}" placeholder="e.g. 118 short — counted twice"></label>
+        <div class="row" style="margin-top:12px">
+          <button type="button" class="btn btn-lg" data-act="clPrint">${icon('print', 18)} Print</button>
+          <button type="button" class="btn btn-primary btn-lg grow" data-act="clSave" ${c.ready ? '' : 'disabled'}>Close shift &amp; save</button>
+        </div>
+        <div class="muted small" style="margin-top:6px">After saving, the next shift starts from this time and its opening balance is this shift’s cash in till.</div>
+      </div>
+    </div>
+    <h2 style="margin:22px 0 10px">Past closings</h2>
+    ${c.history.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Closed</th><th>Shift</th><th class="num">Total sale</th><th class="num">Cash remaining</th><th class="num">Cash in till</th><th class="num">Difference</th><th></th></tr></thead><tbody>
+      ${c.history.map((h) => `<tr><td>${esc(fmtDate(h.shift_to))} ${esc(fmtTime(h.shift_to))}<div class="muted small">by ${esc(h.by_name || '—')}</div></td>
+        <td>${esc(h.shift_name || '—')}<div class="muted small">${esc(fmtTime(h.shift_from))} → ${esc(fmtTime(h.shift_to))}</div></td>
+        <td class="num">${fmt(h.total_sale)}</td><td class="num">${fmt(h.remaining)}</td><td class="num">${fmt(h.till_cash)}</td>
+        <td class="num"><b style="color:${clDiffColor(Number(h.difference))}">${clDiffText(Number(h.difference))}</b></td>
+        <td class="num" style="white-space:nowrap"><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clPrintOld" data-id="${h.id}" aria-label="Print">${icon('print', 16)}</button>${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clDel" data-id="${h.id}" aria-label="Delete">${icon('trash', 16)}</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty">No shifts closed yet.</div>'}`;
+}
+// Everything that gets saved / printed for one closing.
+function clRecord() {
+  const c = S.cl, s = c.sales, f = c.f, k = clCalc();
+  const notes = {}; CL_NOTES.forEach((d) => { if (clN(f.notes[d])) notes[d] = clN(f.notes[d]); }); if (clN(f.coins)) notes.coins = clN(f.coins);
+  return {
+    shift_from: c.fromIso, shift_to: c.toSet ? new Date(c.to).toISOString() : new Date().toISOString(), shift_name: f.shift_name.trim(),
+    cash_sales: s.cash, card_sales: s.card, discount: s.discount, total_sale: s.total,
+    received: k.received, received_from: f.received_from.trim(), opening: k.opening, total_cash: k.totalCash,
+    expenses: c.expCash, remaining: k.remaining, notes_cash: k.notesCash, notes,
+    slips: k.slips.map((x) => ({ label: String(x.label || '').trim() || 'Slip', amount: clN(x.amount) })),
+    till_cash: k.till, difference: k.difference, remarks: f.remarks.trim(), orders_count: s.orders, by_name: S.me.profile.name
+  };
+}
+async function clSlip(h) {
+  const logo = await logoImg();
+  const r = (l, v, cls = '') => `<div class="r ${cls}"><span>${l}</span><span>${v}</span></div>`;
+  const notes = h.notes || {};
+  return `<div class="slip rcpt"><div class="c">${logo}<div class="doc">SHIFT CLOSING</div>
+    <div class="sm">${esc(fmtDate(h.shift_to))}${h.shift_name ? ' · ' + esc(h.shift_name) : ''}<br>${esc(fmtDate(h.shift_from))} ${esc(fmtTime(h.shift_from))} → ${esc(fmtTime(h.shift_to))}<br>Closed by ${esc(h.by_name || '')}</div></div><hr>
+    ${r('Cash sales', num(h.cash_sales))}${r('Card / bank sale', num(h.card_sales))}${r('Sale discount', num(h.discount))}
+    ${r('TOTAL SALE', num(h.total_sale), 'big')}<div class="sm">${Number(h.orders_count) || 0} paid orders</div><hr>
+    ${r('Received from ' + esc(h.received_from || ''), num(h.received))}${r('Cash sale', num(h.cash_sales))}${r('Opening balance', num(h.opening))}
+    ${r('TOTAL CASH', num(h.total_cash), 'big')}${r('Expenses (cash)', '- ' + num(h.expenses))}
+    ${r('FINAL CASH REMAINING', num(h.remaining), 'big')}<hr>
+    ${CL_NOTES.filter((d) => notes[d]).map((d) => r(`${num(d)} x ${notes[d]}`, num(d * notes[d]), 'sm')).join('')}${notes.coins ? r('Coins / loose', num(notes.coins), 'sm') : ''}
+    ${r('Cash notes', num(h.notes_cash))}
+    ${(h.slips || []).length ? `<div class="sm" style="margin-top:4px"><b>Loans &amp; slips (counted as cash)</b></div>${h.slips.map((x) => r(esc(x.label), num(x.amount), 'sm')).join('')}${r('Loans &amp; slips', num(h.slips.reduce((a, x) => a + Number(x.amount), 0)))}` : ''}
+    ${r('FINAL CASH IN TILL', num(h.till_cash), 'big')}<hr>
+    ${r('DIFFERENCE', num(h.difference), 'big')}<div class="sm">${esc(clDiffText(Number(h.difference)))}${h.remarks ? '<br>' + esc(h.remarks) : ''}</div><hr>
+    <div class="sm">Cashier: ____________<br><br>Checked by: ____________</div></div>`;
+}
+// Keeps the cursor where it was when live numbers redraw the screen.
+function clRefreshLive() {
+  if (S.route !== 'closing' || !S.cl?.loaded || S.m || S.cl.busy) return;
+  clearTimeout(S.cl.lt);
+  S.cl.lt = setTimeout(() => run(async () => {
+    S.cl.busy = true;
+    try { await clLoad(true); } finally { S.cl.busy = false; }
+    if (S.route !== 'closing') return;
+    const a = document.activeElement, sel = a && a.closest?.('#screen') ? [...a.attributes].filter((x) => x.name.startsWith('data-cl') || x.name === 'data-k').map((x) => `[${x.name}="${x.value}"]`).join('') : '';
+    const pos = sel && a.selectionStart != null ? [a.selectionStart, a.selectionEnd] : null;
+    renderScreen();
+    if (sel) { const b = $('#screen ' + sel); if (b) { b.focus(); try { if (pos) b.setSelectionRange(...pos); } catch { /* number inputs */ } } }
+  }), 600);
+}
+
+// =====================================================================
 // INVENTORY — stock, recipes & food cost, history
 // =====================================================================
 const UNITS = ['g', 'kg', 'ml', 'L', 'pcs', 'pack', 'dozen', 'bottle', 'can'];
@@ -2982,6 +3171,31 @@ const ACT = {
     if (!confirm('Delete this expense?')) return;
     run(async () => { await api.deleteExpense(Number(d.id)); S.ex.list = S.ex.list.filter((e) => e.id !== Number(d.id)); if (S.ex.editId === Number(d.id)) { S.ex.editId = null; S.ex.form = exBlankForm(); } renderScreen(); toast('Expense deleted'); });
   },
+  clReload: () => run(async () => { await clLoad(true); renderScreen(); toast('Numbers refreshed'); }),
+  clResetRange: () => { Object.assign(S.cl, { fromSet: false, toSet: false, loaded: false }); renderScreen(); },
+  clSlipAdd: () => { S.cl.f.slips.push({ label: '', amount: '' }); renderScreen(); const l = document.querySelectorAll('#screen [data-cls][data-k=label]'); l[l.length - 1]?.focus(); },
+  clSlipDel: (d) => { S.cl.f.slips.splice(Number(d.i), 1); renderScreen(); },
+  clPrint: () => run(async () => { printHtml(await clSlip({ ...clRecord(), shift_to: S.cl.toSet ? new Date(S.cl.to).toISOString() : new Date().toISOString() })); }),
+  clPrintOld: (d) => run(async () => { const h = S.cl.history.find((x) => x.id === Number(d.id)); if (h) printHtml(await clSlip(h)); }),
+  clDel: (d) => {
+    if (!confirm('Delete this shift closing? The next shift’s opening balance may need fixing.')) return;
+    run(async () => { await api.deleteClosing(Number(d.id)); S.cl.loaded = false; renderScreen(); toast('Closing deleted'); });
+  },
+  clSave: () => {
+    const c = S.cl, rec = clRecord();
+    if (c.sales.unpaidCount && !confirm(`${c.sales.unpaidCount} bill(s) are still unpaid (${fmt(c.sales.unpaid)}). Close the shift anyway?`)) return;
+    if (!confirm(`Close this shift?\n\nFinal cash remaining: ${fmt(rec.remaining)}\nFinal cash in till: ${fmt(rec.till_cash)}\nDifference: ${clDiffText(rec.difference)}`)) return;
+    run(async () => {
+      const row = await api.addClosing({ ...rec, created_by: LIVE ? S.me.user.id : null });
+      if (rec.received_from && rec.received_from !== (S.settings.closing_received_from || 'Naseer Sb') && isOwner()) {
+        const data = { ...S.settings, closing_received_from: rec.received_from }; try { await api.saveSettings(data); S.settings = data; } catch { /* not important */ }
+      }
+      Object.assign(c, { fromSet: false, toSet: false, f: null, loaded: false });
+      renderScreen();
+      toast(`Shift closed · ${clDiffText(rec.difference)}`, { action: { label: 'Print', fn: () => run(async () => printHtml(await clSlip(row))) } });
+      printHtml(await clSlip(row));
+    });
+  },
   exPdf: () => { rcInit(); Object.assign(S.rc, { id: 'expenses', preset: 'custom', from: S.ex.from, to: S.ex.to, result: null }); location.hash = '#reports'; },
   rCat: (d) => { S.inv.rCat = d.id; S.inv.rItem = null; renderScreen(); },
   rItem: (d) => { S.inv.rItem = d.id; renderScreen(); },
@@ -3138,6 +3352,11 @@ document.addEventListener('input', (e) => {
     return;
   }
   if (t.dataset.ex !== undefined && S.ex) { S.ex.form[t.dataset.ex] = t.value; return; }
+  if (S.cl?.f && t.closest('#screen')) {
+    if (t.dataset.cl !== undefined) { S.cl.f[t.dataset.cl] = t.value; clPaint(); return; }
+    if (t.dataset.cln !== undefined) { S.cl.f.notes[t.dataset.cln] = t.value; clPaint(); return; }
+    if (t.dataset.cls !== undefined) { const x = S.cl.f.slips[Number(t.dataset.cls)]; if (x) { x[t.dataset.k] = t.value; x.carried = false; } clPaint(); return; }
+  }
   if (t.dataset.exq !== undefined && S.ex) { S.ex.q = t.value; clearTimeout(S.ex.qt); S.ex.qt = setTimeout(() => { renderScreen(); const i = $('[data-exq]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); return; }
   if (t.dataset.m && S.m) {               // field inside a pop-up
     S.m[t.dataset.m] = t.value;
@@ -3163,6 +3382,7 @@ document.addEventListener('change', (e) => {
     return;
   }
   if (t.dataset.mc && S.m) { S.m[t.dataset.mc] = t.checked; return; }
+  if (t.dataset.clr && S.cl) { if (t.value) { S.cl[t.dataset.clr] = t.value; S.cl[t.dataset.clr + 'Set'] = true; S.cl.loaded = false; renderScreen(); } return; }
   if (t.dataset.exr && S.ex) { if (t.value) { S.ex[t.dataset.exr] = t.value; S.ex.preset = 'custom'; S.ex.loaded = false; renderScreen(); } return; }
   if (t.dataset.excat !== undefined && S.ex) { S.ex.cat = t.value; renderScreen(); return; }
   if (t.dataset.rc && S.rc) { S.rc[t.dataset.rc] = t.value; S.rc.preset = 'custom'; S.rc.result = null; renderScreen(); return; }

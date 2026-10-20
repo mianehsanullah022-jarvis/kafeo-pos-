@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0009';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0019';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -149,6 +149,13 @@ export function createDemoApi() {
     },
     async updateExpense(id, patch) { load(); db.expenses = (db.expenses || []).map((e) => (e.id === id ? { ...e, ...patch } : e)); notify('expenses'); return clone(db.expenses.find((e) => e.id === id)); },
     async deleteExpense(id) { load(); db.expenses = (db.expenses || []).filter((e) => e.id !== id); notify('expenses'); },
+    async listClosings(limit = 60) { load(); return clone((db.closings || []).slice().sort((x, y) => String(y.shift_to).localeCompare(String(x.shift_to))).slice(0, limit)); },
+    async addClosing(c) {
+      load(); db.closings = db.closings || []; db.nextClosing = db.nextClosing || 1;
+      const row = { created_at: new Date().toISOString(), ...c, id: db.nextClosing++ };
+      db.closings.push(row); notify('closings'); return clone(row);
+    },
+    async deleteClosing(id) { load(); db.closings = (db.closings || []).filter((c) => c.id !== id); notify('closings'); },
     async listMoves(limit = 300) { load(); return clone((db.moves || []).slice().reverse().slice(0, limit)); },
 
     async getCustomer(phone) { load(); return clone(db.customers[phone] || null); },
