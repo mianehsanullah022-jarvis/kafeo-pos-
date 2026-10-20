@@ -79,20 +79,24 @@ const BASE = [
   ['Mix Cardamom', 'c15', 300, 'coffee'],
   ['Green Tea', 'c13', 150, 'coffee'],
   // Cold coffee & shakes
-  ['Caramel Cold Coffee', 'c8', 649, 'shakes'],
-  ['Oreo Cold Coffee', 'c9', 599, 'shakes'],
-  ['KitKat Shake', 'k1', 649, 'shakes'],
-  ['Oreo Shake', 'k2', 499, 'shakes'],
-  ['Vanilla Shake', 'k3', 499, 'shakes'],
-  ['Chocolate Shake', 'k4', 499, 'shakes'],
-  ['Strawberry Shake', 'k5', 499, 'shakes'],
+  // Standard / Large drinks: { S: price, L: price } → "Name (S)" / "Name (L)".
+  // The plain name (old saved baskets) is read as the Standard size.
+  ['Caramel Cold Coffee', 'c8', { S: 649, L: 800 }, 'shakes'],
+  ['Oreo Cold Coffee', 'c9', { S: 599, L: 800 }, 'shakes'],
+  ['Lotus Coffee', 'c16', { L: 950 }, 'shakes'],
+  ['KitKat Shake', 'k1', { S: 649, L: 950 }, 'shakes'],
+  ['Oreo Shake', 'k2', { S: 549, L: 800 }, 'shakes'],
+  ['Vanilla Shake', 'k3', { S: 499, L: 700 }, 'shakes'],
+  ['Chocolate Shake', 'k4', { S: 499, L: 700 }, 'shakes'],
+  ['Strawberry Shake', 'k5', { S: 499, L: 700 }, 'shakes'],
+  ['Lotus Shake', 'k15', { L: 900 }, 'shakes'],
   // Mocktails & drinks
-  ['Crimson Mist', 'k7', 375, 'mocktails'],
-  ['Jade Valley', 'k6', 375, 'mocktails'],
-  ['Blond Bomb Shell', 'k8', 375, 'mocktails'],
-  ['Mint Margarita', 'k10', 325, 'mocktails'],
-  ['Iced Peach Tea', 'k11', 325, 'mocktails'],
-  ['Fresh Lime', 'k9', 299, 'mocktails'],
+  ['Crimson Mist', 'k7', { S: 375, L: 500 }, 'mocktails'],
+  ['Jade Valley', 'k6', { S: 375, L: 500 }, 'mocktails'],
+  ['Blond Bomb Shell', 'k8', { S: 375, L: 500 }, 'mocktails'],
+  ['Mint Margarita', 'k10', { S: 325, L: 400 }, 'mocktails'],
+  ['Iced Peach Tea', 'k11', { S: 325, L: 400 }, 'mocktails'],
+  ['Fresh Lime', 'k9', { S: 299, L: 375 }, 'mocktails'],
   ['Coke / Sprite 345 ml', 'k12', 100, 'mocktails', 'Coke or Sprite — ask customer', '345ml'],
   ['Coke / Sprite 500 ml', 'k12', 150, 'mocktails', 'Coke or Sprite — ask customer', '500ml'],
   ['Coke / Sprite 1 L', 'k12', 220, 'mocktails', 'Coke or Sprite — ask customer', '1L'],
@@ -153,6 +157,10 @@ const baseByName = new Map();
 for (const [name, id, price, cat, note = '', opt = ''] of BASE) {
   if (Array.isArray(price)) {
     price.forEach((p, i) => baseByName.set(`${name} Pizza (${SIZES[i]})`, { id, opt: SIZES[i], price: p, cat, note, size: i }));
+  } else if (price && typeof price === 'object') {
+    for (const [k, p] of Object.entries(price)) baseByName.set(`${name} (${k})`, { id, opt: k, price: p, cat, note });
+    const std = price.S != null ? 'S' : Object.keys(price)[0];
+    baseByName.set(name, { id, opt: std, price: price[std], cat, note });
   } else {
     baseByName.set(name, { id, opt, price, cat, note });
   }

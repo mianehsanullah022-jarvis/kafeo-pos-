@@ -20,6 +20,7 @@ export const CATEGORIES = [
 
 const sml = (s, m, l) => [{ k: 'S', p: s }, { k: 'M', p: m }, { k: 'L', p: l }];
 const one = (p) => [{ k: '', p }];
+const sl = (st, lg) => [...(st != null ? [{ k: 'S', p: st }] : []), { k: 'L', p: lg }];   // Standard / Large drinks
 let n = 0;
 const it = (cat, id, name, opts, extra = {}) => ({
   id, cat, name, opts, note: extra.note || '', station: extra.station || 'kitchen',
@@ -94,8 +95,9 @@ export const ITEMS = [
   bar('coffee', 'c5', 'Iced Latte', one(800), 'New launch'),
   bar('coffee', 'c6', 'Iced Caramel Latte', one(800), 'New launch'),
   bar('coffee', 'c7', 'Iced Chocolate Latte', one(800), 'New launch'),
-  bar('coffee', 'c8', 'Caramel Coffee', one(649)),
-  bar('coffee', 'c9', 'Oreo Coffee', one(599)),
+  bar('coffee', 'c8', 'Caramel Coffee', sl(649, 800)),
+  bar('coffee', 'c9', 'Oreo Coffee', sl(599, 800)),
+  bar('coffee', 'c16', 'Lotus Coffee', sl(null, 950), 'Large only'),
   bar('coffee', 'c10', 'Karak Chai', one(280)),
   bar('coffee', 'c11', 'Cardamom Tea', one(299)),
   it('coffee', 'c14', 'Mix Karak', one(280), { counts: 'drink' }),
@@ -103,17 +105,18 @@ export const ITEMS = [
   bar('coffee', 'c12', 'Kashmiri Chai', one(320)),
   bar('coffee', 'c13', 'Green Tea', one(150)),
 
-  bar('drinks', 'k1', 'KitKat Shake', one(649)),
-  bar('drinks', 'k2', 'Oreo Shake', one(499)),
-  bar('drinks', 'k3', 'Vanilla Shake', one(499)),
-  bar('drinks', 'k4', 'Chocolate Shake', one(499)),
-  bar('drinks', 'k5', 'Strawberry Shake', one(499)),
-  bar('drinks', 'k6', 'Jade Valley', one(375), 'Mocktail'),
-  bar('drinks', 'k7', 'Crimson Mist', one(375), 'Mocktail'),
-  bar('drinks', 'k8', 'Blond Bomb Shell', one(375), 'Mocktail'),
-  bar('drinks', 'k9', 'Fresh Lime', one(299)),
-  bar('drinks', 'k10', 'Mint Margretta', one(325)),
-  bar('drinks', 'k11', 'Iced Peach Tea', one(325)),
+  bar('drinks', 'k1', 'KitKat Shake', sl(649, 950)),
+  bar('drinks', 'k2', 'Oreo Shake', sl(549, 800)),
+  bar('drinks', 'k3', 'Vanilla Shake', sl(499, 700)),
+  bar('drinks', 'k4', 'Chocolate Shake', sl(499, 700)),
+  bar('drinks', 'k5', 'Strawberry Shake', sl(499, 700)),
+  bar('drinks', 'k15', 'Lotus Shake', sl(null, 900), 'Large only'),
+  bar('drinks', 'k6', 'Jade Valley', sl(375, 500), 'Mocktail'),
+  bar('drinks', 'k7', 'Crimson Mist', sl(375, 500), 'Mocktail'),
+  bar('drinks', 'k8', 'Blond Bomb Shell', sl(375, 500), 'Mocktail'),
+  bar('drinks', 'k9', 'Fresh Lime', sl(299, 375)),
+  bar('drinks', 'k10', 'Mint Margretta', sl(325, 400)),
+  bar('drinks', 'k11', 'Iced Peach Tea', sl(325, 400)),
   it('drinks', 'k12', 'Coke', [{ k: '345ml', p: 100 }, { k: '500ml', p: 150 }, { k: '1L', p: 220 }, { k: '1.5L', p: 300 }], { station: 'bar' }),
   it('drinks', 'k14', 'Sprite', [{ k: '345ml', p: 100 }, { k: '500ml', p: 150 }, { k: '1L', p: 220 }, { k: '1.5L', p: 300 }], { station: 'bar' }),
   it('drinks', 'k13', 'Water', [{ k: '500ml', p: 60 }, { k: '1.5L', p: 100 }], { station: 'bar' }),

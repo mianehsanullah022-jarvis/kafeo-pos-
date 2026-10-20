@@ -54,6 +54,8 @@ for (const c of MENU) {
         TOPS.forEach(([, tn, tp]) => check(`${name} + ${tn}`, pp + tp[k]));
         check(`${name} + ${TOPS.map((t) => t[1]).join(', ')}`, pp + TOPS.reduce((a, t) => a + t[2][k], 0));
       });
+    } else if (Array.isArray(p)) {
+      ['S', 'L'].forEach((s, k) => { if (p[k] != null) check(`${nm} (${s})`, p[k]); });
     } else {
       check(nm, p);
       customs(nm, p, c.id);
@@ -62,7 +64,7 @@ for (const c of MENU) {
 }
 for (const [nm, p] of DEALS) check('Deal: ' + nm, p);
 check('Custom: Caramel Iced Latte (2x Espresso shot, Milk, Caramel, Ice)', 800);
-for (const [nm, p] of [['Mint Margarita', 325], ['Coke / Sprite 345 ml', 100], ['KAFEO Iced Latte', 800], ['Crimson Mist', 375]]) check(nm, p);
+for (const [nm, p] of [['Mint Margarita (S)', 325], ['Coke / Sprite 345 ml', 100], ['KAFEO Iced Latte', 800], ['Crimson Mist (S)', 375], ['Oreo Shake', 549]]) check(nm, p);
 
 // Things that MUST be flagged
 const menu = new Map([['b6', { name: 'Zinger', station: 'kitchen', counts: null, active: true }], ['a4', { name: 'Cheese Slice', station: 'kitchen', active: true }]]);
