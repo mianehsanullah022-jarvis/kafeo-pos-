@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-2312';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-2312';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-2312';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-0009';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-0009';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0009';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.20-2312';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-2312';
-import { pdfBlob } from './pdf.js?v=2026.10.20-2312';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-2312';
+} from './logic.js?v=2026.10.21-0009';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-0009';
+import { pdfBlob } from './pdf.js?v=2026.10.21-0009';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-0009';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.20-2312')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.21-0009')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -225,8 +225,8 @@ function onLive(kind, payload) {
     S.riders = await api.listRiders();
     if (S.route === 'order') renderSummary(); else if (S.route === 'dashboard') refreshDash(); else rerenderIf(['delivery', 'settings', 'kitchen']);
   });
-  if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); });
-  if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); return; }
+  if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); else rcLiveRefresh(); });
+  if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); else rcLiveRefresh(); return; }
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
 function scheduleRefresh() {
@@ -240,6 +240,7 @@ function scheduleRefresh() {
     else if (S.route === 'reports' && S.rep.range === 'today') { await loadReport(); renderScreen(); }
     else if (S.route === 'customers' && S.cs.sel) { await selectCustomer(S.cs.sel.phone, true); }
     else if (S.route === 'dashboard') { await refreshDash(); }
+    else if (S.route === 'reports') { rcLiveRefresh(); }
     else rerenderIf(['kitchen', 'delivery', 'orders']);
   }), 250);
 }
@@ -295,6 +296,7 @@ window.addEventListener('hashchange', () => {
   renderShell();
   // Coming back to the dashboard: show the last numbers, faded, and fetch fresh ones straight away.
   if (S.route === 'dashboard' && was !== 'dashboard' && S.dash.loaded) run(async () => { await refreshOrders(); await refreshDash(); });
+  if (S.route === 'reports' && was !== 'reports') rcLiveRefresh();
 });
 
 function renderShell() {
@@ -1537,6 +1539,8 @@ const rcRangeText = () => {
 };
 async function rcLoad() {
   const rc = S.rc, def = REPORTS[rc.id];
+  // "Today", "This week"… are recalculated each time, so they roll over at the business-day start.
+  if (rc.preset && rc.preset !== 'custom') { const r = presetRange(rc.preset); if (r) { rc.from = toLocalInput(r[0]); rc.to = toLocalInput(r[1]); } }
   const from = new Date(rc.from), to = new Date(rc.to);
   if (!def.noDates && !(from < to)) throw new Error('The end date/time must be after the start');
   rc.busy = true; rc.warn = ''; renderScreen();
@@ -1564,10 +1568,17 @@ function saveBlob(blob, name) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
+// Print, PDF and Excel always fetch fresh data first, so they include everything entered up to now.
 async function rcEnsure() {
-  const rc = S.rc;
-  if (!rc.result || rc.builtFor !== rc.id + rc.from + rc.to + JSON.stringify(rc.f)) await rcLoad();
-  return rc.result;
+  await rcLoad();
+  return S.rc.result;
+}
+// A report on screen updates by itself when orders, expenses or stock change (keeps the old one, faded, meanwhile).
+let rcLiveTimer = null;
+function rcLiveRefresh() {
+  if (S.route !== 'reports' || (S.rep.tab || 'center') !== 'center' || !S.rc?.result || S.rc.busy || S.m) return;
+  clearTimeout(rcLiveTimer);
+  rcLiveTimer = setTimeout(() => run(async () => { if (S.route === 'reports' && S.rc?.result && !S.rc.busy && !S.m) await rcLoad(); }), 600);
 }
 function printA4(html, landscape) {
   const area = $('#print-area');
