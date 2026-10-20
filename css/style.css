@@ -352,7 +352,7 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .slip .r { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }
   .slip .r > span:first-child { min-width: 0; }
   .slip .r > span:last-child { text-align: right; white-space: nowrap; }
-  .slip .r small { display: block; font-size: 9px; font-weight: 500; }
+  .slip .r small { display: block; font-size: 9px; font-weight: 600; }
   .slip .big { font-size: 15px; font-weight: 800; }
 
   /* ---- customer receipt ---- */
@@ -363,12 +363,12 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .rcpt .info { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 6px; row-gap: 2px; padding-bottom: 6px; border-bottom: 1px solid #000; }
   .rcpt .kv { display: flex; justify-content: space-between; gap: 3px; font-size: 9.5px; min-width: 0; }
   .rcpt .kv b { min-width: 0; }
-  .rcpt .kv span { color: #000; opacity: .75; }
+  .rcpt .kv span { color: #000; font-weight: 600; }   /* solid black: thermal printers turn greys into faint dots */
   .rcpt .kv b { text-align: right; font-weight: 700; }
   .rcpt .cust { font-size: 10px; padding: 4px 0; border-bottom: 1px solid #000; }
   .rcpt .lines { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 10.5px; }
   .rcpt .lines th { font-size: 8.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; text-align: left; padding: 3px 0; border-bottom: 1px solid #000; }
-  .rcpt .lines td { padding: 3px 0; vertical-align: top; border-bottom: 1px dotted #999; }
+  .rcpt .lines td { padding: 3px 0; vertical-align: top; border-bottom: 1px dotted #000; }
   .rcpt .lines { table-layout: fixed; }
   .rcpt .lines th:nth-child(1), .rcpt .lines td:nth-child(1) { width: 7%; }
   .rcpt .lines th:nth-child(3), .rcpt .lines td:nth-child(3) { width: 10%; }
@@ -378,7 +378,7 @@ dialog::backdrop { background: rgba(20, 16, 14, .55); }
   .rcpt .lines th:nth-child(n+3), .rcpt .lines td:nth-child(n+3) { text-align: right; padding-left: 2px; }
   .rcpt .lines th { font-size: 8px; }
   .rcpt .lines td:nth-child(2) { font-weight: 600; }
-  .rcpt .lines td small { display: block; font-size: 8.5px; font-weight: 500; font-style: italic; }
+  .rcpt .lines td small { display: block; font-size: 8.5px; font-weight: 600; font-style: italic; }
   .rcpt .count { font-size: 9px; text-align: right; padding: 3px 0 5px; border-bottom: 1px solid #000; }
   .rcpt .sums { padding: 4px 0; }
   .rcpt .sums .r small { font-style: normal; }
