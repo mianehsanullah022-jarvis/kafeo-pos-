@@ -463,3 +463,12 @@ create unique index if not exists orders_web_ref_uidx
 -- Fast look-ups for the anti-spam limits in the Edge Function.
 create index if not exists orders_source_created_idx
   on public.orders ((meta->>'source'), created_at desc);
+
+-- ===== 007_realtime_expenses.sql =====
+-- KAFEO POS · live updates for expenses (so the Dashboard's Expenses and Sales − expenses update by themselves).
+-- Safe to run more than once. Already applied to the KAFEO project.
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'expenses') then
+    alter publication supabase_realtime add table public.expenses;
+  end if;
+end $$;

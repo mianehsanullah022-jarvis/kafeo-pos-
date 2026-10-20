@@ -128,6 +128,7 @@ export function createSupabaseApi(url, key) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => cb('menu'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => cb('settings'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, () => cb('stock'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => cb('expenses'))
         .subscribe((status) => cb('status', status));
       return () => sb.removeChannel(ch);
     }

@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-1450';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-1450';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-1450';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.20-1505';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.20-1505';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.20-1505';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.20-1450';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-1450';
-import { pdfBlob } from './pdf.js?v=2026.10.20-1450';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-1450';
+} from './logic.js?v=2026.10.20-1505';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.20-1505';
+import { pdfBlob } from './pdf.js?v=2026.10.20-1505';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.20-1505';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.20-1450')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.20-1505')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -217,13 +217,14 @@ function onLive(kind, payload) {
     if (S.live === 'on') scheduleRefresh();
     return renderLiveDot();
   }
-  if (kind === 'menu') return run(async () => { S.menu = await api.loadMenu(); if (S.route === 'order') { renderCats(); renderGrid(); } else rerenderIf(['menu']); });
+  if (kind === 'menu') return run(async () => { S.menu = await api.loadMenu(); if (S.route === 'order') { renderCats(); renderGrid(); } else if (S.route === 'dashboard') dashRedraw(); else rerenderIf(['menu']); });
   if (kind === 'settings') return run(async () => {
     S.settings = { ...DEFAULT_SETTINGS, ...(await api.loadSettings()) };
     S.riders = await api.listRiders();
-    if (S.route === 'order') renderSummary(); else rerenderIf(['delivery', 'settings']);
+    if (S.route === 'order') renderSummary(); else if (S.route === 'dashboard') refreshDash(); else rerenderIf(['delivery', 'settings']);
   });
-  if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); });
+  if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); });
+  if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); return; }
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
 function scheduleRefresh() {
@@ -1165,7 +1166,7 @@ function dashStats(orders, exp) {
 function dashDelta(cur, prev, upIsGood = true) {
   if (prev == null || cur == null) return '';
   if (!prev && !cur) return '<span class="dd flat">No change</span>';
-  if (!prev) return '<span class="dd up">▲ New</span>';
+  if (!prev) return '<span class="dd flat">New · nothing to compare</span>';
   const p = (cur - prev) / prev * 100;
   if (Math.abs(p) < 0.5) return '<span class="dd flat">● Same</span>';
   const good = (p > 0) === upIsGood;
@@ -1382,7 +1383,7 @@ function dashLive() {
   return [
     { icon: '🔔', value: web.length, label: 'Website orders waiting', sub: web.length ? fmt(sumBy(web, (o) => o.total)) : 'all handled', tone: web.length ? 'web' : '', act: 'webOpen' },
     { icon: '🍳', value: kq.length, label: 'In the kitchen', sub: `${n('new')} new · ${n('preparing')} cooking · ${n('ready')} ready`, tone: '', href: '#kitchen' },
-    { icon: '⏱', value: late.length, label: `Late (over ${LATE_MIN} min)`, sub: late.length ? 'check the kitchen' : 'none', tone: late.length ? 'crit' : '', href: '#kitchen' },
+    { icon: '⏱', value: late.length, label: `Waiting over ${LATE_MIN} min`, sub: late.length ? `not ready yet · longest ${Math.max(...late.map((o) => minutesSince(o.created_at)))} min` : 'all orders on time', tone: late.length ? 'crit' : '', href: '#kitchen' },
     { icon: '🧾', value: bills.length, label: 'Running bills', sub: fmt(sumBy(bills, (o) => o.total)) + ' to collect', tone: '', href: '#orders' },
     { icon: '🛵', value: out.length, label: 'Out for delivery', sub: '', tone: '', href: '#delivery' },
     { icon: '📦', value: low.length, label: 'Low stock items', sub: low.length ? 'buy soon' : 'all fine', tone: low.length ? 'warnt' : '', href: '#inventory' }
@@ -1491,8 +1492,13 @@ async function refreshDash() {
   if (S.m) d.needsRender = true;   // a pop-up is open — redraw as soon as it closes
   else renderScreen();
 }
-// Safety net: re-check every 20 seconds while the dashboard is on screen (in case the live connection drops).
-setInterval(() => { if (S.me?.profile && S.route === 'dashboard' && !document.hidden) refreshOrders().then(refreshDash).catch(() => {}); }, 20000);
+// Redraw from data already on screen (menu names, stock levels) — waits if a pop-up is open.
+function dashRedraw() { if (S.route !== 'dashboard' || !S.dash.loaded) return; if (S.m) S.dash.needsRender = true; else renderScreen(); }
+// Safety net: re-check everything every 20 seconds while the dashboard is on screen (in case the live connection drops).
+setInterval(() => {
+  if (!S.me?.profile || S.route !== 'dashboard' || document.hidden) return;
+  Promise.all([refreshOrders(), loadInventory()]).then(refreshDash).catch(() => {});
+}, 20000);
 
 // =====================================================================
 // REPORTS CENTER — pick a report, choose start & end date/time, view / PDF / print / Excel
