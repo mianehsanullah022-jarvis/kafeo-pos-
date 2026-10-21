@@ -80,6 +80,10 @@ export function createSupabaseApi(url, key) {
     async updateIfPending(id, patch) {
       return must(await sb.from('orders').update(patch).eq('id', id).eq('status', 'pending').select().maybeSingle());
     },
+    async deleteOrder(id) {
+      const rows = must(await sb.from('orders').delete().eq('id', id).select('id'));
+      if (!rows.length) throw new Error('Only the owner can delete orders');
+    },
     async getOrder(id) { return must(await sb.from('orders').select('*').eq('id', id).maybeSingle()); },
 
     // ---- inventory ----

@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-0019';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-0019';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0019';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1400';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1400';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1400';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.21-0019';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-0019';
-import { pdfBlob } from './pdf.js?v=2026.10.21-0019';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-0019';
+} from './logic.js?v=2026.10.21-1400';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1400';
+import { pdfBlob } from './pdf.js?v=2026.10.21-1400';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1400';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.21-0019')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.21-1400')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1103,8 +1103,11 @@ function renderOrders(el) {
     : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Where</th><th>Items</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
         <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${whereOf(o)}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
-        <td class="num"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button></td></tr>`).join('')}</tbody></table></div>`
-      : '<div class="empty panel">Nothing paid yet today.</div>')}`;
+        <td class="num" style="white-space:nowrap"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button>${isOwner() ? ` <button type="button" class="btn btn-sm btn-danger" data-act="deleteOrder" data-id="${o.id}" aria-label="Delete order ${o.id}">${icon('trash', 16)} Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty panel">Nothing paid yet today.</div>')}
+    ${S.ordersTab === 'paid' && isOwner() ? `<form class="row wrap del-old" data-submit="deleteOldOrder" style="margin-top:14px">
+      <span class="muted small">Older order?</span><input name="id" type="number" min="1" inputmode="numeric" placeholder="Order number, e.g. 1024" style="max-width:220px" class="ex-sel">
+      <button type="submit" class="btn btn-danger">${icon('trash', 16)} Delete order</button></form>` : ''}`;
 }
 
 // =====================================================================
@@ -2993,6 +2996,7 @@ const ACT = {
   },
   webReject: (d) => run(() => rejectWebOrder(Number(d.id))),
   printKot: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) printKot(o, false); }),
+  deleteOrder: (d) => run(() => deleteOrderFlow(Number(d.id))),
   cancelOrder: (d) => {
     if (!confirm(`Cancel order #${d.id}? It stays in reports as cancelled.`)) return;
     run(async () => {
@@ -3222,7 +3226,20 @@ function recipeRows(key) {
   return S.inv.recipes.filter((r) => r.menu_item_id === itemId && r.option_key === k).map((r) => ({ stock_item_id: r.stock_item_id, qty: r.qty }));
 }
 const csvList = (v) => String(v).split(',').map((t) => t.trim()).filter(Boolean);
+// Owner only: removes an order for good (sales, reports, dashboard). Stock used by it is put back.
+async function deleteOrderFlow(id) {
+  if (!isOwner()) return;
+  const o = findOrder(id) || await api.getOrder(id);
+  if (!o) throw new Error(`Order #${id} not found`);
+  const what = `Order #${o.id} · ${fmt(o.total)} · ${o.paid ? 'paid by ' + (o.payment || '—') : 'not paid'} · ${fmtDate(o.created_at)} ${fmtTime(o.created_at)}`;
+  if (!confirm(`DELETE ${what}?\n\nIt will be removed from sales, reports and the dashboard for good. This can't be undone.`)) return;
+  if (o.status !== 'cancelled') { try { await syncStock(o, o.items, []); } catch { /* stock is optional */ } }
+  await api.deleteOrder(o.id);
+  await refreshOrders(); renderBillsBadge(); renderScreen();
+  toast(`Order #${o.id} deleted`);
+}
 const SUBMIT = {
+  deleteOldOrder: (form) => { const id = Number(form.id.value); if (!(id > 0)) return toast('Type the order number', { err: true }); run(async () => { await deleteOrderFlow(id); form.id && (form.id.value = ''); }); },
   dashCustom: (form) => {
     const a = form.from.value, b = form.to.value;
     if (!a || !b) return toast('Pick both dates', { err: true });

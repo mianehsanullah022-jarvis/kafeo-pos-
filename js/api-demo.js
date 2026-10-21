@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-0019';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1400';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -110,6 +110,7 @@ export function createDemoApi() {
         (['new', 'preparing', 'ready', 'out'].includes(o.status) || (!o.paid && o.status !== 'cancelled'))));
     },
     async ordersForPhone(phone) { load(); return clone(db.orders.filter((o) => o.customer_phone === phone).reverse().slice(0, 20)); },
+    async deleteOrder(id) { load(); db.orders = db.orders.filter((o) => o.id !== id); notify('orders'); },
     async getOrder(id) { load(); return clone(db.orders.find((o) => o.id === id) || null); },
 
     // ---- inventory ----

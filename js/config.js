@@ -11,4 +11,4 @@ export const SUPABASE_URL = 'https://tcsigufnamlqssraignw.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_WPeCFMUZfGDCylVQ8z4W5w_U-sbFJkW';
 
 // Set automatically by tools/stamp-version.mjs — shown under "Me" so you can check you have the latest update.
-export const APP_VERSION = '2026.10.21-0019';
+export const APP_VERSION = '2026.10.21-1400';
