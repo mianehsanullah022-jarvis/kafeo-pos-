@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1607';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1607';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1607';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1617';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1617';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1617';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.21-1607';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1607';
-import { pdfBlob } from './pdf.js?v=2026.10.21-1607';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1607';
+} from './logic.js?v=2026.10.21-1617';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1617';
+import { pdfBlob } from './pdf.js?v=2026.10.21-1617';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1617';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.21-1607')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.21-1617')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1110,7 +1110,7 @@ function renderOrders(el) {
         </div>
       </article>`).join('') : `<div class="empty panel">No running ${f === 'all' ? '' : TYPE_LABEL[f].toLowerCase() + ' '}orders. Use <b>+ New order</b> → add items → <b>Add order</b>.</div>`}</div>`
     : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Where</th><th>Items</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
-        <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${whereOf(o)}${takerOf(o) ? `<div class="muted small">Taker: ${esc(takerOf(o))}</div>` : ''}</td>
+        <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td><td>${whereOf(o)}${takerOf(o) ? `<div class="muted small">Taker: ${esc(takerOf(o))}</div>` : ''}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
         <td class="num" style="white-space:nowrap"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button>${isOwner() ? ` <button type="button" class="btn btn-sm btn-danger" data-act="deleteOrder" data-id="${o.id}" aria-label="Delete order ${o.id}">${icon('trash', 16)} Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty panel">Nothing paid yet today.</div>')}
@@ -1317,7 +1317,7 @@ function renderDashboard(el) {
     <div class="screen-head">
       <div><h1>Dashboard</h1><div class="muted small">${esc(periodText)} · business day starts ${hourLabel(Number(S.settings.day_start_hour ?? 6))}</div></div>
       <span class="grow"></span>
-      <span class="muted small dash-upd"><i class="dot-live"></i>Live · updated ${d.at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+      <span class="muted small dash-upd"><i class="dot-live"></i>Live · updated ${d.at.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</span>
     </div>
     <div class="seg dash-range" role="group" aria-label="Period">${DASH_RANGES.map(([v, l]) =>
       `<button type="button" class="${d.range === v ? 'on' : ''}" aria-pressed="${d.range === v}" data-act="dashRange" data-v="${v}">${l}</button>`).join('')}</div>
@@ -1378,7 +1378,7 @@ function renderDashboard(el) {
       <div class="row"><h2 style="margin:0">Latest orders</h2><span class="grow"></span><a class="btn btn-sm" href="#reports">All reports</a></div>
       <div class="tbl-wrap" style="margin-top:10px"><table class="tbl compact"><thead><tr><th>Order</th><th>Time</th><th>From</th><th>Where</th><th>Items</th><th>Status</th><th class="num">Total</th></tr></thead><tbody>
       ${recent.map((o) => `<tr>
-        <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${r.days > 1 ? `<br><span class="muted small">${new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>` : ''}</td>
+        <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}${r.days > 1 ? `<br><span class="muted small">${new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>` : ''}</td>
         <td>${isWeb(o) ? '<span class="tag web" style="margin:0">Website</span>' : '<span class="muted">Counter</span>'}</td>
         <td>${whereOf(o)}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td>
@@ -1663,7 +1663,7 @@ function renderExpenseModal() {
       <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${m.method === pm ? 'on' : ''}" data-act="expMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
       <label class="field">Description<input data-m="description" value="${esc(m.description)}" placeholder="e.g. 2 crates milk from Nestle rider"></label>
       ${m.list.length ? `<div><div class="lbl">Today’s expenses · ${fmt(m.list.reduce((a, e) => a + Number(e.amount), 0))}</div>
-        <div class="tbl-wrap"><table class="tbl compact"><tbody>${m.list.slice().reverse().map((e) => `<tr><td>${new Date(e.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${esc(e.type)}<div class="muted small">${esc(e.description)}</div></td><td>${esc(e.method)}</td><td class="num"><b>${fmt(e.amount)}</b></td>
+        <div class="tbl-wrap"><table class="tbl compact"><tbody>${m.list.slice().reverse().map((e) => `<tr><td>${new Date(e.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td><td>${esc(e.type)}<div class="muted small">${esc(e.description)}</div></td><td>${esc(e.method)}</td><td class="num"><b>${fmt(e.amount)}</b></td>
           <td class="num">${isOwner() ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="expDel" data-id="${e.id}" aria-label="Delete expense">${icon('trash', 16)}</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
     </div>
     <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Close</button>
@@ -2146,7 +2146,7 @@ function renderHistoryTab(el) {
       <span class="grow"></span><button type="button" class="btn" data-act="histReload">Refresh</button></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Item</th><th class="num">Change</th><th>Type</th><th>Note</th><th>By</th></tr></thead><tbody>
       ${list.map((m) => { const it = stockById(m.stock_item_id); const ch = Number(m.change); return `<tr>
-        <td>${new Date(m.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${new Date(m.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td>
         <td>${esc(it?.name || 'Deleted item')}</td>
         <td class="num"><b class="${ch < 0 ? 'err-text' : 'ok-text'}">${ch > 0 ? '+' : '−'}${invQty(Math.abs(ch))}</b> ${esc(it?.unit || '')}</td>
         <td><span class="tag ${m.kind === 'purchase' ? 'ok' : m.kind === 'waste' ? 'warn' : ''}">${MOVE_LABEL[m.kind] || m.kind}</span></td>
@@ -2370,7 +2370,7 @@ function renderReportsDash(el) {
     <section class="panel"><h2>Orders</h2>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Type</th><th>Items</th><th>Discount</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>
       ${S.rep.orders.slice(0, 150).map((o) => `<tr>
-        <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td>
         <td>${TYPE_LABEL[o.type]}${o.table_no ? ' · ' + esc(o.table_no) : ''}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td>
         <td class="small">${Number(o.discount) ? `${fmt(o.discount)}<br><span class="muted">${esc(o.discount_label)}</span>` : '—'}</td>
@@ -2868,7 +2868,7 @@ async function printZ() {
   const allExp = exp.reduce((a, e) => a + Number(e.amount), 0);
   const r = summarize(S.today);
   const inc = incentives(S.today, S.settings.incentives, S.settings.incentive_daily_cap);
-  printHtml(`<div class="slip rcpt"><div class="c">${logo}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} by ${esc(S.me.profile.name)}</div></div><hr>
+  printHtml(`<div class="slip rcpt"><div class="c">${logo}<div class="doc">Z-REPORT · ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div><div class="sm">Printed ${new Date().toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()} by ${esc(S.me.profile.name)}</div></div><hr>
     <div class="r big"><span>Net sales</span><span>${num(r.net)}</span></div>
     <div class="r"><span>Paid orders</span><span>${r.orders}</span></div>
     <div class="r"><span>Discounts</span><span>${num(r.discounts)}</span></div>
