@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1400';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1400';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1400';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1607';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1607';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1607';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.21-1400';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1400';
-import { pdfBlob } from './pdf.js?v=2026.10.21-1400';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1400';
+} from './logic.js?v=2026.10.21-1607';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1607';
+import { pdfBlob } from './pdf.js?v=2026.10.21-1607';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1607';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.21-1400')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.21-1607')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -112,7 +112,7 @@ const S = {
   me: null, menu: { categories: [], items: [] }, settings: { ...DEFAULT_SETTINGS }, riders: [], staff: [],
   open: [], today: [], route: 'order', live: 'connecting', seenNew: null, busy: false,
   // order screen
-  cat: null, q: '', cart: [], type: 'dine', table: '', phone: '', custName: '', address: '', notes: '',
+  cat: null, q: '', cart: [], type: 'dine', table: '', taker: '', phone: '', custName: '', address: '', notes: '',
   discount: null, serviceOn: true, feeOverride: null, customer: null, editing: null,
   ordersTab: 'open', ordersFilter: 'all',
   m: null,        // state of the open pop-up
@@ -126,6 +126,9 @@ const S = {
   dash: { range: 'today', loaded: false, loading: false }
 };
 const role = () => S.me?.profile?.role;
+// Order takers (waiters) — for table incentives. Names are set in Settings → Order takers.
+const takers = () => (S.settings.order_takers || []).filter(Boolean);
+const takerOf = (o) => o?.meta?.taker || '';
 const isOwner = () => role() === 'owner';
 const canSee = (id) => ROUTES.find((r) => r.id === id)?.roles.includes(role());
 const homeRoute = () => ({ owner: 'order', cashier: 'order', kitchen: 'kitchen', rider: 'delivery' }[role()] || 'order');
@@ -633,6 +636,7 @@ function renderSummary() {
         `<button type="button" class="${S.type === v ? 'on' : ''}" aria-pressed="${S.type === v}" data-act="type" data-v="${v}">${l}</button>`).join('')}</div>
       <div class="chips-row">
         ${S.type === 'dine' ? `<button type="button" class="chip ${S.table ? 'set' : 'need'}" data-act="details" data-focus="table">${icon('table', 16)}<span>${S.table ? 'Table ' + esc(S.table) : 'Pick table *'}</span></button>` : ''}
+        ${takers().length ? `<button type="button" class="chip ${S.taker ? 'set' : S.type === 'dine' ? 'need' : ''}" data-act="details" data-focus="taker">${icon('user', 16)}<span>${S.taker ? esc(S.taker) : S.type === 'dine' ? 'Order taker *' : 'Order taker'}</span></button>` : ''}
         <button type="button" class="chip ${phoneOk(p) || S.custName ? 'set' : S.type === 'deliv' ? 'need' : ''}" data-act="details" data-focus="phone">${custChip}</button>
         <button type="button" class="chip ${S.notes ? 'set' : ''}" data-act="details" data-focus="notes">${icon('note', 16)}<span>${S.notes ? 'Note ✓' : 'Note'}</span></button>
       </div>
@@ -696,13 +700,14 @@ function validateOrder() {
   const p = cleanPhone(S.phone);
   if (!S.cart.length) return 'Add items first';
   if (S.type === 'dine' && !S.table) return 'Pick a table';
+  if (S.type === 'dine' && takers().length && !S.taker) return 'Pick the order taker';
   if (S.phone && !phoneOk(p)) return 'Phone should be 11 digits, like 03001234567';
   if (S.type === 'deliv' && !phoneOk(p)) return 'Delivery needs the customer’s phone';
   if (S.type === 'deliv' && !S.address.trim()) return 'Add the delivery address';
   if (S.discount?.reason === 'Loyalty reward' && !loyaltyAvailable()) return 'This customer’s loyalty card isn’t full yet';
   return '';
 }
-function needsDetails(msg) { toast(msg, { err: true }); if (/table|phone|address|loyalty/i.test(msg)) openDetails(/table/i.test(msg) ? 'table' : /address/i.test(msg) ? 'address' : 'phone'); }
+function needsDetails(msg) { toast(msg, { err: true }); if (/taker|table|phone|address|loyalty/i.test(msg)) openDetails(/taker/i.test(msg) ? 'taker' : /table/i.test(msg) ? 'table' : /address/i.test(msg) ? 'address' : 'phone'); }
 
 // Build the order row from the current screen.
 function orderFromState(method, paid, payExtra = {}) {
@@ -723,7 +728,7 @@ function orderFromState(method, paid, payExtra = {}) {
     payment: paid ? method : (S.type === 'deliv' ? 'Cash (COD)' : ''), paid,
     status: prev ? (anyAdded && prev.status !== 'new' ? 'new' : prev.status) : 'new',
     reward: bmsmReward(bill.subtotal, S.settings.bmsm),
-    meta: { discount: S.discount, serviceOn: S.serviceOn, inclusive: bill.inclusive, by: S.me.profile.name },
+    meta: { ...(prev?.meta || {}), discount: S.discount, serviceOn: S.serviceOn, inclusive: bill.inclusive, by: prev?.meta?.by || S.me.profile.name, taker: S.taker || '' },
     ...payExtra
   };
 }
@@ -751,12 +756,12 @@ async function saveOrder(method = null, payExtra = {}) {
   return row || null;
 }
 function resetOrder() {
-  Object.assign(S, { cart: [], table: '', phone: '', custName: '', address: '', notes: '', discount: null, customer: null, editing: null, feeOverride: null, q: '' });
+  Object.assign(S, { cart: [], table: '', taker: '', phone: '', custName: '', address: '', notes: '', discount: null, customer: null, editing: null, feeOverride: null, q: '' });
   S.serviceOn = S.settings.service_default_on !== false;
 }
 function loadForEdit(o) {
   Object.assign(S, {
-    editing: o, type: o.type, table: o.table_no, phone: o.customer_phone, custName: o.customer_name, address: o.address, notes: o.notes,
+    editing: o, type: o.type, table: o.table_no, taker: takerOf(o), phone: o.customer_phone, custName: o.customer_name, address: o.address, notes: o.notes,
     discount: ctxForOrder(o, 'Cash').discount, serviceOn: o.meta?.serviceOn ?? Number(o.service_charge) > 0,
     feeOverride: o.type === 'deliv' ? Number(o.delivery_fee) : null, customer: null,
     cart: o.items.map((l) => ({ id: l.id, opt: optOf(l), name: l.name, price: Number(l.price), qty: l.qty, station: l.station, counts: l.counts, note: l.note || '', disc: l.disc || null, sentQty: l.qty }))
@@ -798,6 +803,10 @@ function renderDetails() {
   openModal('md', `
     ${modalHead('Order details', TYPE_LABEL[S.type])}
     <div class="mb stack">
+      <div><div class="lbl">Order taker ${S.type === 'dine' && takers().length ? '*' : ''} <span class="muted small">· who took this order (for table incentives)</span></div>
+        ${takers().length ? `<div class="chips" role="group" aria-label="Order taker">${takers().map((t, i) => `<button type="button" class="chip-sm ${S.taker === t ? 'on' : ''}" aria-pressed="${S.taker === t}" data-act="pickTaker" data-v="${esc(t)}" data-mf="${i === 0 ? 'taker' : ''}">${esc(t)}</button>`).join('')}</div>`
+          : `<div class="muted small">${isOwner() ? 'No names yet — add your waiters in <b>Settings → Order takers</b>.' : 'No names yet — ask the owner to add them in Settings.'}</div>`}
+      </div>
       ${S.type === 'dine' ? `<div class="stack" style="gap:10px">${areasWithOthers([...busyTables.keys()]).map((a, ai) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid" role="group" aria-label="${esc(a.name)} tables">${a.tables.map((t, ti) => {
         const busy = busyTables.get(t);
         return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${ai === 0 && ti === 0 ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
@@ -1087,7 +1096,7 @@ function renderOrders(el) {
     <div class="bills-grid">${shown.length ? shown.map((o) => `
       <article class="bill" id="bill-${o.id}">
         <div class="row"><b class="bill-where">${whereOf(o)}</b>${o.meta?.source === 'website' ? '<span class="tag web">Website</span>' : ''}<span class="grow"></span>${kitchenTag(o)}</div>
-        <div class="row muted small"><span>Order #${o.id}</span><span>·</span><span>${minutesSince(o.created_at)} min ago</span>${o.meta?.by ? `<span>·</span><span>${esc(o.meta.by)}</span>` : ''}</div>
+        <div class="row muted small"><span>Order #${o.id}</span><span>·</span><span>${minutesSince(o.created_at)} min ago</span>${o.meta?.by ? `<span>·</span><span>${esc(o.meta.by)}</span>` : ''}${takerOf(o) ? `<span>·</span><span>Taker: <b>${esc(takerOf(o))}</b></span>` : ''}</div>
         <ul class="bill-items">${o.items.map((l) => `<li><span>${l.qty}× ${esc(l.name)}${l.note ? ` <em>${esc(l.note)}</em>` : ''}</span><span>${num(l.price * l.qty)}</span></li>`).join('')}</ul>
         ${o.discount_label ? `<div class="small ok-text">Discount: ${esc(o.discount_label)} (−${fmt(o.discount)})</div>` : ''}
         <div class="bill-total"><span>Total</span><b>${fmt(o.total)}</b></div>
@@ -1101,7 +1110,7 @@ function renderOrders(el) {
         </div>
       </article>`).join('') : `<div class="empty panel">No running ${f === 'all' ? '' : TYPE_LABEL[f].toLowerCase() + ' '}orders. Use <b>+ New order</b> → add items → <b>Add order</b>.</div>`}</div>`
     : (paidToday.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Where</th><th>Items</th><th>Paid by</th><th class="num">Total</th><th></th></tr></thead><tbody>${paidToday.map((o) => `
-        <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${whereOf(o)}</td>
+        <tr><td>#${o.id}</td><td>${new Date(o.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</td><td>${whereOf(o)}${takerOf(o) ? `<div class="muted small">Taker: ${esc(takerOf(o))}</div>` : ''}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td><td>${esc(o.payment)}</td><td class="num">${fmt(o.total)}</td>
         <td class="num" style="white-space:nowrap"><button type="button" class="btn btn-sm" data-act="print" data-id="${o.id}">Receipt</button>${isOwner() ? ` <button type="button" class="btn btn-sm btn-danger" data-act="deleteOrder" data-id="${o.id}" aria-label="Delete order ${o.id}">${icon('trash', 16)} Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="empty panel">Nothing paid yet today.</div>')}
@@ -1361,6 +1370,7 @@ function renderDashboard(el) {
     </div>
     <div class="cols dash-cols">
       ${dashBars('Top 8 items', items, 'By sales value')}
+      ${dashBars('Order takers · tables', takerStats(d.orders).map((t) => ({ name: t.name, value: t.dineSales, sub: `${t.tables} table${t.tables === 1 ? '' : 's'} · ${t.orders} orders` })), 'Paid dine-in sales by who took the order')}
       <section class="panel"><h2>Low stock</h2>${dashLowStock()}</section>
     </div>
 
@@ -2296,6 +2306,18 @@ function renderReports(el) {
     <div id="rep-body"></div>`;
   if (tab === 'center') renderReportsCenter($('#rep-body')); else renderReportsDash($('#rep-body'));
 }
+// Paid orders per order taker. "Tables" = paid dine-in bills they took.
+function takerStats(orders) {
+  const m = new Map();
+  orders.filter((o) => o.paid && o.status !== 'cancelled' && takerOf(o)).forEach((o) => {
+    const k = takerOf(o), r = m.get(k) || { name: k, orders: 0, sales: 0, tables: 0, dineSales: 0, drinks: 0 };
+    r.orders++; r.sales += Number(o.total || 0);
+    if (o.type === 'dine') { r.tables++; r.dineSales += Number(o.total || 0); }
+    (o.items || []).forEach((l) => { if (l.counts === 'drink') r.drinks += l.qty; });
+    m.set(k, r);
+  });
+  return [...m.values()].sort((a, b) => b.tables - a.tables || b.sales - a.sales);
+}
 function renderReportsDash(el) {
   el.className = 'stack';
   if (!S.rep.loaded) { el.innerHTML = '<div class="empty">Loading report…</div>'; run(async () => { await loadReport(); renderScreen(); }); return; }
@@ -2336,6 +2358,9 @@ function renderReportsDash(el) {
         ${inc.pools.map((p) => `<div class="pool"><div class="row"><b>${esc(p.label)}</b><span class="grow"></span><b style="color:var(--gold)">${fmt(p.earned)}</b></div>
           <div class="small muted">${p.count} counted</div><div class="track"><span style="width:${p.pct}%"></span></div><div class="small muted">${esc(p.next)}</div></div>`).join('')}
         <div class="row" style="border-top:1px solid var(--night-line);padding-top:10px"><span>Total today</span><span class="grow"></span><b style="color:var(--gold)">${fmt(inc.total)} / max ${fmt(inc.cap)}</b></div>
+        ${(() => { const t = takerStats(S.today); return t.length ? `<h2 style="margin-top:16px">Order takers today</h2>
+          ${t.map((r) => `<div class="pool"><div class="row"><b>${esc(r.name)}</b><span class="grow"></span><b style="color:var(--gold)">${r.tables} table${r.tables === 1 ? '' : 's'}</b></div>
+          <div class="small muted">${fmt(r.dineSales)} dine-in · ${r.orders} orders in all · ${fmt(r.sales)} · ${r.drinks} drinks</div></div>`).join('')}` : ''; })()}
       </section>
     </div>
     <section class="panel"><h2>Top sellers</h2>
@@ -2527,7 +2552,10 @@ function renderSettings(el) {
         <label class="field">Kitchen order is late after (minutes) — turns red on the Kitchen screen and counts on the Dashboard<input name="late_min" type="number" min="1" max="180" step="1" inputmode="numeric" value="${lateMin()}"></label>
         <label class="field">Business day starts at (for “Today” in reports)<select name="day_start_hour">${Array.from({ length: 13 }, (_, h) => `<option value="${h}" ${Number(s.day_start_hour ?? 6) === h ? 'selected' : ''}>${h === 0 ? '12:00 midnight' : h + ':00 AM'}</option>`).join('')}</select></label>
       </div>
-      <label class="field">Expense types — one per line<textarea name="expense_types" style="min-height:70px">${esc((s.expense_types || []).join('\n'))}</textarea></label>
+      <div class="cols">
+        <label class="field">Expense types — one per line<textarea name="expense_types" style="min-height:70px">${esc((s.expense_types || []).join('\n'))}</textarea></label>
+        <label class="field">Order takers (waiters) — one name per line. Dine-in orders must pick one; used for table incentives<textarea name="order_takers" style="min-height:70px" placeholder="Ali\nUsman\nHamza">${esc((s.order_takers || []).join('\n'))}</textarea></label>
+      </div>
       <h2>Discounts</h2>
       <div class="cols">
         <label class="field">Most a cashier can give (%) — owner has no limit<input name="cashier_max_discount_pct" type="number" min="0" max="100" value="${esc(s.cashier_max_discount_pct)}"></label>
@@ -2726,7 +2754,7 @@ function receiptHtml(o, opts = {}) {
     <section class="info">
       ${kv('Invoice', invoiceNo(o))}${kv('Date', fmtDate(o.created_at))}
       ${kv('Order', typeText(o))}${kv('Time', fmtTime(o.paid ? o.updated_at || o.created_at : o.created_at))}
-      ${o.meta?.by ? kv('Cashier', esc(o.meta.by)) : ''}${o.paid ? kv('Payment', esc(o.payment)) : kv('Status', 'Unpaid')}
+      ${o.meta?.by ? kv('Cashier', esc(o.meta.by)) : ''}${takerOf(o) ? kv('Order taker', esc(takerOf(o))) : ''}${o.paid ? kv('Payment', esc(o.payment)) : kv('Status', 'Unpaid')}
     </section>
     ${o.customer_name || o.customer_phone ? `<div class="cust">Customer:&nbsp;<b>${esc(o.customer_name || '—')}</b>${o.customer_phone ? '&nbsp;·&nbsp;' + esc(o.customer_phone) : ''}${o.address ? `<br>Deliver to: ${esc(o.address)}` : ''}</div>` : ''}
     <table class="lines">
@@ -2882,6 +2910,7 @@ const ACT = {
   type: (d) => { S.type = d.v; renderSummary(); },
   details: (d) => openDetails(d.focus),
   pickTable: (d) => { S.table = d.v; renderDetails(); },
+  pickTaker: (d) => { S.taker = S.taker === d.v ? '' : d.v; renderDetails(); renderSummary(); },
   toggleService: () => { S.serviceOn = !S.serviceOn; renderSummary(); },
   clearCart: () => {
     if (S.cart.length && !confirm(S.editing ? 'Stop editing this bill? Changes won’t be saved.' : 'Clear this order?')) return;
@@ -3301,6 +3330,7 @@ const SUBMIT = {
       day_start_hour: Number(form.day_start_hour.value) || 0,
       late_min: Math.max(1, Math.min(180, Math.round(Number(form.late_min.value) || 15))),
       expense_types: form.expense_types.value.split('\n').map((l) => l.trim()).filter(Boolean),
+      order_takers: [...new Set(form.order_takers.value.split('\n').map((l) => l.trim()).filter(Boolean))],
       cashier_max_discount_pct: pct(form.cashier_max_discount_pct.value),
       quick_discounts: csvList(form.quick_discounts.value).map(Number).filter((n) => n > 0 && n <= 100),
       banks: csvList(form.banks.value),

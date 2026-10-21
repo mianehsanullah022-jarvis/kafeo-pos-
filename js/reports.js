@@ -1,6 +1,6 @@
 // KAFEO Reports Center — every report is built as plain data (title, key figures, tables),
 // then shown on screen, saved as PDF, printed on A4 or thermal, or exported to Excel (CSV).
-import { lineDiscount } from './logic.js?v=2026.10.21-1400';
+import { lineDiscount } from './logic.js?v=2026.10.21-1607';
 
 const n0 = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const rs = (n) => 'Rs ' + n0(n);
@@ -316,6 +316,12 @@ export const REPORTS = {
         tables: [{ heading: 'By staff member', columns: [L('Staff'), R('Orders'), R('Sales'), R('Average bill'), R('Discounts given'), R('Discounted orders'), R('Cancelled')],
           rows: [...g].map(([name, l]) => [name, n0(l.length), n0(sum(l, (o) => o.total)), n0(sum(l, (o) => o.total) / l.length), n0(sum(l, (o) => o.discount)), n0(l.filter((o) => Number(o.discount) > 0).length), n0(d.orders.filter((o) => o.status === 'cancelled' && by(o) === name).length)]),
           total: ['All', n0(paid.length), rs(sum(paid, (o) => o.total)), '', n0(sum(paid, (o) => o.discount)), '', ''], thermal: [0, 1, 2] },
+        { heading: 'By order taker (for table incentives)', columns: [L('Order taker'), R('Tables (dine-in)'), R('Dine-in sales'), R('All orders'), R('All sales'), R('Drinks')],
+          rows: (() => { const t = groupBy(paid.filter((o) => o.meta?.taker), (o) => o.meta.taker);
+            return [...t].map(([name, l]) => { const dine = l.filter((o) => o.type === 'dine');
+              return [name, n0(dine.length), n0(sum(dine, (o) => o.total)), n0(l.length), n0(sum(l, (o) => o.total)), n0(sum(l, (o) => sum(o.items.filter((x) => x.counts === 'drink'), (x) => x.qty)))]; })
+              .sort((a, b) => Number(String(b[1]).replace(/,/g, '')) - Number(String(a[1]).replace(/,/g, ''))); })(),
+          note: 'Orders without an order taker are not counted here.', thermal: [0, 1, 2] },
         { heading: 'Incentive pools (counted items)', columns: [L('Pool'), R('Items counted')], rows: Object.keys(counts).map((k) => [inc[k]?.label || k, n0(counts[k])]),
           note: 'Incentive tiers are per day — for amounts, run this report for a single day.', thermal: [0, 1] }] };
     }

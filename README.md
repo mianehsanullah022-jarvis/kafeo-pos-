@@ -175,3 +175,10 @@ ES modules don't load from a double-clicked file, so serve the folder:
 python3 -m http.server 8000
 # then open http://localhost:8000
 ```
+
+## Order takers (table incentives)
+
+- The owner adds waiter names in **Settings → Order takers** (one per line).
+- On **New order**, an **Order taker** button sits next to the table. Dine-in orders must pick one; takeaway and delivery can too.
+- The order taker shows on the bill card, on the Paid list and on the printed receipt.
+- **Dashboard → Order takers · tables**, **Reports → Live dashboard** and the **Staff / Cashier Report** show each order taker's paid tables, dine-in sales, all orders and drinks.
