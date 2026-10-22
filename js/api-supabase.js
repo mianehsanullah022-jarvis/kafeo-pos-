@@ -66,6 +66,10 @@ export function createSupabaseApi(url, key) {
     async ordersBetween(fromIso, toIso) {
       return allPages(() => sb.from('orders').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: false }).order('id', { ascending: false }), 50000);
     },
+    async payLaterOrders() {
+      // Every unpaid "Pay later" order, however old.
+      return allPages(() => sb.from('orders').select('*').eq('payment', 'Pay later').eq('paid', false).neq('status', 'cancelled').order('created_at', { ascending: true }).order('id', { ascending: true }), 50000);
+    },
     async openOrders() {
       // Anything not finished, plus unpaid bills, from the last 3 days.
       const since = new Date(Date.now() - 3 * 864e5).toISOString();

@@ -21,6 +21,9 @@ export const PAY_METHODS = ['Cash', 'Card', 'JazzCash', 'Easypaisa', 'Bank trans
 // anywhere until they are marked paid — then they become a normal expense on the day they're paid.
 export const PAY_LATER = 'Pay later';
 export const EXP_METHODS = [...PAY_METHODS, PAY_LATER];
+// An order the customer will pay for later (udhaar): saved unpaid with payment = "Pay later".
+// It is not a sale until it's paid; then it counts on the day it's paid.
+export const isPayLater = (o) => !!o && !o.paid && o.payment === PAY_LATER && o.status !== 'cancelled';
 export const isDigital = (method) => !!method && method !== 'Cash' && method !== 'Cash (COD)';
 export const taxRateFor = (method, s) => Number(isDigital(method) ? s.tax_digital_pct : s.tax_cash_pct) || 0;
 

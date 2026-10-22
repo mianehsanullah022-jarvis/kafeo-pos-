@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.22-1600';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.22-1600';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1600';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.22-1730';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.22-1730';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1730';
 import {
-  fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
+  fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.22-1600';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.22-1600';
-import { pdfBlob } from './pdf.js?v=2026.10.22-1600';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.22-1600';
+} from './logic.js?v=2026.10.22-1730';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.22-1730';
+import { pdfBlob } from './pdf.js?v=2026.10.22-1730';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.22-1730';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.22-1600')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.22-1730')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -212,9 +212,10 @@ async function loadAll() {
 async function refreshOrders() {
   const from = startOfDay();
   const to = new Date(from.getTime() + 864e5);
-  const [open, today] = await Promise.all([api.openOrders(), api.ordersBetween(from.toISOString(), to.toISOString())]);
+  const [open, today, later] = await Promise.all([api.openOrders(), api.ordersBetween(from.toISOString(), to.toISOString()), api.payLaterOrders().catch(() => [])]);
   S.open = open;
   S.today = today;
+  S.later = later;
 }
 
 // ---------- live updates ----------
@@ -542,7 +543,8 @@ function parseAreas(txt) {
     return k > 0 ? { name: l.slice(0, k).trim() || `Area ${i + 1}`, tables: expandTables(l.slice(k + 1)) } : { name: `Area ${i + 1}`, tables: expandTables(l) };
   }).filter((a) => a.tables.length);
 }
-const unpaidBills = () => S.open.filter((o) => !o.paid && o.status !== 'cancelled' && o.status !== 'pending');
+const unpaidBills = () => S.open.filter((o) => !o.paid && o.status !== 'cancelled' && o.status !== 'pending' && !isPayLater(o));
+const payLaterBills = () => (S.later || []).filter(isPayLater);
 const webPending = () => S.open.filter((o) => o.status === 'pending');
 const loyaltyAvailable = () => phoneOk(cleanPhone(S.phone)) && rewardReady(S.customer, req());
 const deliveryFee = () => (S.feeOverride ?? Number(S.settings.delivery_fee)) || 0;
@@ -725,7 +727,7 @@ function orderFromState(method, paid, payExtra = {}) {
     address: S.type === 'deliv' ? S.address.trim() : '', items, notes: S.notes.trim(),
     subtotal: bill.subtotal, discount: bill.discount, discount_label: discountLabel(S.discount),
     service_charge: bill.service, tax: bill.tax, tax_rate: bill.taxRate, delivery_fee: bill.fee, round_off: bill.roundOff, total: bill.total,
-    payment: paid ? method : (S.type === 'deliv' ? 'Cash (COD)' : ''), paid,
+    payment: paid ? method : (prev && isPayLater(prev) ? PAY_LATER : S.type === 'deliv' ? 'Cash (COD)' : ''), paid,
     status: prev ? (anyAdded && prev.status !== 'new' ? 'new' : prev.status) : 'new',
     reward: bmsmReward(bill.subtotal, S.settings.bmsm),
     meta: { ...(prev?.meta || {}), discount: S.discount, serviceOn: S.serviceOn, inclusive: bill.inclusive, by: prev?.meta?.by || S.me.profile.name, taker: S.taker || '' },
@@ -739,6 +741,7 @@ async function saveOrder(method = null, payExtra = {}) {
   if (problem) { needsDetails(problem); return null; }
   const paid = !!method;
   const data = orderFromState(method, paid, payExtra);
+  if (data.payment === PAY_LATER && !S.editing?.meta?.pay_later) data.meta = { ...data.meta, pay_later: { at: new Date().toISOString(), by: S.me.profile.name } };
   S.busy = true; renderSummary();
   const row = await run(async () => {
     let r;
@@ -786,6 +789,12 @@ async function payExisting(o, method, extra = {}) {
     tax: bill.tax, tax_rate: bill.taxRate, delivery_fee: bill.fee, round_off: bill.roundOff, total: bill.total, ...extra
   };
   if (o.type === 'deliv' && o.status === 'out') patch.status = 'done';
+  if (isPayLater(o)) {
+    // Collected now → it becomes today's sale (so it shows in today's cash, closing and reports).
+    const now = new Date().toISOString();
+    patch.created_at = now;
+    patch.meta = { ...(o.meta || {}), pay_later: { ...(o.meta?.pay_later || {}), ordered_at: o.created_at, paid_at: now } };
+  }
   const r = await api.updateOrder(o.id, patch);
   if (r.customer_phone) await saveCustomerAfter(r, true);
   await refreshOrders();
@@ -799,7 +808,7 @@ function openDetails(focus = 'phone') {
   setTimeout(() => { const f = $(`#dlg [data-mf="${focus}"]`); f?.focus?.(); }, 30);
 }
 function renderDetails() {
-  const busyTables = new Map(S.open.filter((o) => o.type === 'dine' && o.status !== 'cancelled' && o.status !== 'pending' && (!o.paid || o.status !== 'done') && (!S.editing || o.id !== S.editing.id)).map((o) => [o.table_no, o.id]));
+  const busyTables = new Map(S.open.filter((o) => o.type === 'dine' && o.status !== 'cancelled' && o.status !== 'pending' && !isPayLater(o) && (!o.paid || o.status !== 'done') && (!S.editing || o.id !== S.editing.id)).map((o) => [o.table_no, o.id]));
   openModal('md', `
     ${modalHead('Order details', TYPE_LABEL[S.type])}
     <div class="mb stack">
@@ -974,12 +983,15 @@ function openPayment(target) {
   // target: null = the order on screen; or an existing order object
   if (!target) { const problem = validateOrder(); if (problem) return needsDetails(problem); }
   let pr = true; try { pr = localStorage.getItem('kafeo-print') !== '0'; } catch { pr = true; }
-  S.m = { kind: 'pay', target, method: 'Cash', received: '', print: pr };
+  const who = target ? (target.customer_name || '') : (S.custName.trim() || S.customer?.name || '');
+  S.m = { kind: 'pay', target, method: 'Cash', received: '', print: pr, who };
   renderPayment();
 }
+// "Pay later" isn't a real method yet — the bill is shown at the cash rate; it's recalculated when they actually pay.
+const billMethod = (method) => (method === PAY_LATER ? 'Cash' : method);
 function payBill() {
-  const m = S.m;
-  return m.target ? computeBill(m.target.items, ctxForOrder(m.target, m.method)) : computeBill(S.cart, ctxNow(m.method));
+  const m = S.m, pm = billMethod(m.method);
+  return m.target ? computeBill(m.target.items, ctxForOrder(m.target, pm)) : computeBill(S.cart, ctxNow(pm));
 }
 function renderPayment() {
   const m = S.m, s = S.settings;
@@ -991,8 +1003,12 @@ function renderPayment() {
       <div class="stack">
         <div class="lbl">Payment method</div>
         <div class="methods">${PAY_METHODS.map((pm) => `<button type="button" class="${m.method === pm ? 'on' : ''}" aria-pressed="${m.method === pm}" data-act="pMethod" data-v="${pm}">
-          <b>${pm}</b><small>${taxRateFor(pm, s) ? `Tax ${num(taxRateFor(pm, s))}%` : 'No tax'}</small></button>`).join('')}</div>
-        ${m.method === 'Cash' ? `
+          <b>${pm}</b><small>${taxRateFor(pm, s) ? `Tax ${num(taxRateFor(pm, s))}%` : 'No tax'}</small></button>`).join('')}${isPayLater(t) ? '' : `<button type="button" class="${m.method === PAY_LATER ? 'on' : ''}" aria-pressed="${m.method === PAY_LATER}" data-act="pMethod" data-v="${PAY_LATER}">
+          <b>${PAY_LATER}</b><small>customer pays another day</small></button>`}</div>
+        ${m.method === PAY_LATER ? `
+          <label class="field">Who will pay? (customer name)<input data-m="who" value="${esc(m.who)}" placeholder="e.g. Ali Bhai, Shadman office" autocomplete="off"></label>
+          <div class="muted">No money is taken now. The order moves to <b>Orders → Pay later</b> and is <b>not counted in sales</b> until you take the payment there.</div>`
+        : m.method === 'Cash' ? `
           <label class="field">Cash received (Rs)<input data-m="received" type="number" min="0" step="10" inputmode="numeric" value="${esc(m.received)}" placeholder="${bill.total}"></label>
           <div class="chips">${cashSuggestions(bill.total).map((v) => `<button type="button" class="chip-lg ${Number(m.received) === v ? 'on' : ''}" data-act="pCash" data-v="${v}">${v === bill.total ? 'Exact' : 'Rs ' + num(v)}</button>`).join('')}</div>
           <div class="change" id="change">${changeHtml(bill)}</div>` : `<div class="muted">Confirm the ${esc(m.method)} payment of <b>${fmt(bill.total)}</b> has gone through before completing.</div>`}
@@ -1004,7 +1020,7 @@ function renderPayment() {
           <div><dt>Subtotal</dt><dd>${fmt(bill.subtotal)}</dd></div>
           ${bill.discount ? `<div class="ok-text"><dt>Discount</dt><dd>− ${fmt(bill.discount)}</dd></div>` : ''}
           ${bill.service ? `<div><dt>Service charge ${num(bill.servicePct)}%</dt><dd>${fmt(bill.service)}</dd></div>` : ''}
-          <div><dt>${bill.inclusive ? 'Incl. tax' : 'Tax'} ${num(bill.taxRate)}% (${isDigital(m.method) ? 'card/digital' : 'cash'})</dt><dd>${fmt(bill.tax)}</dd></div>
+          <div><dt>${bill.inclusive ? 'Incl. tax' : 'Tax'} ${num(bill.taxRate)}% (${isDigital(billMethod(m.method)) ? 'card/digital' : 'cash'})</dt><dd>${fmt(bill.tax)}</dd></div>
           ${bill.fee ? `<div><dt>Delivery fee</dt><dd>${fmt(bill.fee)}</dd></div>` : ''}
           ${bill.roundOff ? `<div><dt>Round off</dt><dd>${bill.roundOff > 0 ? '+' : '−'} ${fmt(Math.abs(bill.roundOff))}</dd></div>` : ''}
           <div class="grand"><dt>To pay</dt><dd>${fmt(bill.total)}</dd></div>
@@ -1014,7 +1030,7 @@ function renderPayment() {
     </div>
     <footer class="mf"><span class="grow"></span>
       <button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
-      <button type="button" class="btn btn-primary btn-lg" data-act="pComplete" id="p-go">Complete payment · ${fmt(bill.total)}</button></footer>`);
+      <button type="button" class="btn btn-primary btn-lg" data-act="pComplete" id="p-go">${m.method === PAY_LATER ? 'Save as Pay later' : 'Complete payment'} · ${fmt(bill.total)}</button></footer>`);
 }
 function changeHtml(bill) {
   const r = Number(S.m.received);
@@ -1022,8 +1038,33 @@ function changeHtml(bill) {
   if (r < bill.total) return `<span class="err-text">Short by</span><b class="err-text">${fmt(bill.total - r)}</b>`;
   return `<span>Change to return</span><b>${fmt(r - bill.total)}</b>`;
 }
+// Customer will pay another day: keep the order unpaid, marked "Pay later" → Orders → Pay later.
+async function completePayLater() {
+  const m = S.m, who = String(m.who || '').trim();
+  if (!who && !(m.target ? m.target.customer_phone : phoneOk(cleanPhone(S.phone)))) return toast('Write who will pay (customer name)', { err: true });
+  try { localStorage.setItem('kafeo-print', m.print ? '1' : '0'); } catch { /* ignore */ }
+  const btn = $('#p-go'); if (btn) btn.disabled = true;
+  const print = m.print, target = m.target, wasEdit = !!S.editing;
+  let row;
+  if (target) {
+    row = await run(async () => {
+      const r = await api.updateOrder(target.id, { payment: PAY_LATER, customer_name: who || target.customer_name, meta: { ...(target.meta || {}), pay_later: { at: new Date().toISOString(), by: S.me.profile.name } } });
+      await refreshOrders(); return r;
+    });
+  } else {
+    if (who) S.custName = who;
+    row = await saveOrder(null, { payment: PAY_LATER });
+  }
+  if (!row) { if (btn) btn.disabled = false; return; }
+  closeModal();
+  renderBillsBadge();
+  if (S.route !== 'order') renderScreen();
+  toast(`Order #${row.id} saved to Pay later · ${fmt(row.total)}${row.customer_name ? ' · ' + row.customer_name : ''}`);
+  await printAfterSave(row, { kot: !target, onlyNew: wasEdit, receipt: print });
+}
 async function completePayment() {
   const m = S.m;
+  if (m.method === PAY_LATER) return completePayLater();
   const bill = payBill();
   const received = m.method === 'Cash' ? (m.received === '' ? bill.total : Number(m.received)) : bill.total;
   if (received < bill.total) return toast(`Cash received is less than ${fmt(bill.total)}`, { err: true });
@@ -1051,6 +1092,7 @@ function renderOrders(el) {
   el.className = 'screen';
   const bills = unpaidBills();
   const paidToday = S.today.filter((o) => o.paid && o.status !== 'cancelled');
+  const later = payLaterBills(), laterDue = later.reduce((a, o) => a + Number(o.total), 0);
   const f = S.ordersFilter;
   const shown = bills.filter((o) => f === 'all' || o.type === f);
   const due = bills.reduce((a, o) => a + Number(o.total), 0);
@@ -1072,11 +1114,26 @@ function renderOrders(el) {
       <button type="button" class="btn btn-lg" data-act="expenses">Add expense</button>
       <a class="btn btn-primary btn-lg" href="#order">+ New order</a>
     </div>
-    <div class="seg" role="tablist" style="max-width:420px">
+    <div class="seg" role="tablist" style="max-width:560px">
       <button type="button" class="${S.ordersTab === 'open' ? 'on' : ''}" data-act="ordersTab" data-v="open">Running (${bills.length})</button>
       <button type="button" class="${S.ordersTab === 'paid' ? 'on' : ''}" data-act="ordersTab" data-v="paid">Paid today (${paidToday.length})</button>
+      <button type="button" class="${S.ordersTab === 'later' ? 'on' : ''}" data-act="ordersTab" data-v="later">Pay later (${later.length})</button>
     </div>
-    ${S.ordersTab === 'open' ? `
+    ${S.ordersTab === 'later' ? (later.length ? `
+    <div class="muted" style="margin-bottom:10px">Customers who will pay another day. Still owed: <b>${fmt(laterDue)}</b> — not counted in sales until paid. When they pay, tap <b>Take payment</b>; it then counts as that day’s sale.</div>
+    <div class="bills-grid">${later.map((o) => { const pl = o.meta?.pay_later || {}; const days = Math.floor((Date.now() - new Date(o.created_at)) / 864e5); return `
+      <article class="bill" id="bill-${o.id}">
+        <div class="row"><b class="bill-where">${esc(o.customer_name || o.customer_phone || 'Customer')}</b><span class="grow"></span><span class="tag ${days >= 7 ? 'warn' : ''}">${days ? days + (days === 1 ? ' day' : ' days') : 'Today'}</span></div>
+        <div class="row wrap muted small"><span>Order #${o.id}</span><span>·</span><span>${o.type === 'dine' ? 'Table ' + esc(o.table_no) : TYPE_LABEL[o.type]}</span><span>·</span><span>${esc(fmtDate(o.created_at))} ${fmtTime(o.created_at)}</span>${pl.by ? `<span>·</span><span>by ${esc(pl.by)}</span>` : ''}${o.customer_phone ? `<span>·</span><span>${esc(o.customer_phone)}</span>` : ''}</div>
+        <ul class="bill-items">${o.items.map((l) => `<li><span>${l.qty}× ${esc(l.name)}</span><span>${num(l.price * l.qty)}</span></li>`).join('')}</ul>
+        <div class="bill-total"><span>To collect</span><b>${fmt(o.total)}</b></div>
+        <div class="bill-actions">
+          <button type="button" class="btn btn-primary btn-lg" data-act="payOpen" data-id="${o.id}">Take payment</button>
+          <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
+          ${isOwner() ? `<button type="button" class="btn btn-danger" data-act="cancelOrder" data-id="${o.id}" aria-label="Cancel order ${o.id}">${icon('x', 18)}</button>` : ''}
+        </div>
+      </article>`; }).join('')}</div>` : '<div class="empty panel">No pay-later orders. Choose <b>Pay later</b> in the payment pop-up when a customer will pay another day.</div>')
+    : S.ordersTab === 'open' ? `
     <section class="panel">
       <div class="row" style="margin-bottom:12px"><h2 style="margin:0">Tables</h2><span class="grow"></span>
         <span class="legend"><i class="free"></i>Free</span><span class="legend"><i class="busy"></i>Has a bill</span></div>
@@ -1823,7 +1880,7 @@ async function clLoad(keepForm) {
   const all = paid.reduce((a, o) => a + Number(o.total || 0), 0);
   const byPay = {};
   paid.filter((o) => !CASH_METHODS.includes(o.payment)).forEach((o) => { const k = o.payment || 'Other'; byPay[k] = (byPay[k] || 0) + Number(o.total || 0); });
-  const unpaid = orders.filter((o) => !o.paid && !['cancelled', 'pending'].includes(o.status));
+  const unpaid = orders.filter((o) => !o.paid && !['cancelled', 'pending'].includes(o.status) && !isPayLater(o));
   c.sales = {
     cash, card: all - cash, byPay, total: all, orders: paid.length,
     discount: paid.reduce((a, o) => a + Number(o.discount || 0), 0),
@@ -2907,7 +2964,7 @@ async function printZ() {
 // =====================================================================
 // EVENTS
 // =====================================================================
-const findOrder = (id) => S.open.find((x) => x.id === id) || S.today.find((x) => x.id === id) || S.rep.orders.find((x) => x.id === id);
+const findOrder = (id) => S.open.find((x) => x.id === id) || S.today.find((x) => x.id === id) || (S.later || []).find((x) => x.id === id) || S.rep.orders.find((x) => x.id === id);
 const ACT = {
   toastAct: () => { const f = toastAction; $('#toast').className = ''; f?.(); },
   demoFill: (d) => { $('input[name=email]').value = d.email; $('input[name=password]').value = DEMO_PASSWORD; },
