@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.21-1617';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.21-1617';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1617';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.22-1600';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.22-1600';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1600';
 import {
-  fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
+  fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.21-1617';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.21-1617';
-import { pdfBlob } from './pdf.js?v=2026.10.21-1617';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.21-1617';
+} from './logic.js?v=2026.10.22-1600';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.22-1600';
+import { pdfBlob } from './pdf.js?v=2026.10.22-1600';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.22-1600';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.21-1617')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.22-1600')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1660,7 +1660,8 @@ function renderExpenseModal() {
       ${m.ready ? '' : '<div class="error">Expenses need a one-time database update: run supabase/migrations/005_expenses.sql in Supabase.</div>'}
       <label class="field">Amount (Rs)<input data-m="amount" type="number" min="1" step="1" inputmode="numeric" value="${esc(m.amount)}" autofocus></label>
       <div><div class="lbl">Type</div><div class="chips">${types.map((t) => `<button type="button" class="chip-sm ${m.type === t ? 'on' : ''}" data-act="expType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
-      <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${m.method === pm ? 'on' : ''}" data-act="expMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
+      <div><div class="lbl">Paid by</div><div class="chips">${EXP_METHODS.map((pm) => `<button type="button" class="chip-sm ${m.method === pm ? 'on' : ''}" data-act="expMethod" data-v="${pm}">${pm}</button>`).join('')}</div>
+        ${m.method === PAY_LATER ? '<div class="muted small" style="margin-top:6px">Not paid yet — saved under “Pay later” on the Expenses screen, not added to expenses until it’s marked paid.</div>' : ''}</div>
       <label class="field">Description<input data-m="description" value="${esc(m.description)}" placeholder="e.g. 2 crates milk from Nestle rider"></label>
       ${m.list.length ? `<div><div class="lbl">Today’s expenses · ${fmt(m.list.reduce((a, e) => a + Number(e.amount), 0))}</div>
         <div class="tbl-wrap"><table class="tbl compact"><tbody>${m.list.slice().reverse().map((e) => `<tr><td>${new Date(e.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td><td>${esc(e.type)}<div class="muted small">${esc(e.description)}</div></td><td>${esc(e.method)}</td><td class="num"><b>${fmt(e.amount)}</b></td>
@@ -1689,6 +1690,7 @@ function exInit() {
 async function exLoad() {
   const x = S.ex, from = new Date(x.from), to = new Date(x.to);
   try { x.list = await api.expensesBetween(from.toISOString(), to.toISOString()); x.ready = true; } catch { x.list = []; x.ready = false; }
+  try { x.later = await api.payLaterExpenses(); } catch { x.later = []; }
   x.sales = null;
   if (isOwner()) {
     try { const os = await api.ordersBetween(from.toISOString(), to.toISOString()); x.sales = os.filter((o) => o.paid && o.status !== 'cancelled').reduce((a, o) => a + Number(o.total || 0), 0); } catch { x.sales = null; }
@@ -1720,6 +1722,9 @@ function renderExpenses(el) {
   const days = new Map();
   list.forEach((e) => { const k = fmtDate(businessDayStart(new Date(e.created_at))); (days.get(k) || days.set(k, []).get(k)).push(e); });
   const f = x.form, editing = x.editId != null;
+  const later = (x.later || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const laterTotal = later.reduce((a, e) => a + Number(e.amount), 0);
+  const isLater = f.method === PAY_LATER;
   const rangeTxt = `${rdt(new Date(x.from))} - ${rdt(new Date(x.to))}`;
   el.innerHTML = `
     <div class="screen-head"><h1>Expenses</h1><span class="muted">${esc(rangeTxt)}</span></div>
@@ -1734,6 +1739,7 @@ function renderExpenses(el) {
       <div class="kpi"><div class="l">Total expenses</div><div class="v">${fmt(total)}</div><div class="s">${list.length} ${list.length === 1 ? 'entry' : 'entries'}</div></div>
       <div class="kpi"><div class="l">Paid in cash</div><div class="v">${fmt(cash)}</div><div class="s">out of the cash drawer</div></div>
       <div class="kpi"><div class="l">Card / wallet / bank</div><div class="v">${fmt(total - cash)}</div></div>
+      <div class="kpi"><div class="l">Pay later (still owed)</div><div class="v" style="color:${laterTotal ? 'var(--warn)' : 'inherit'}">${fmt(laterTotal)}</div><div class="s">${later.length} unpaid ${later.length === 1 ? 'bill' : 'bills'} · not in expenses</div></div>
       ${owner && x.sales != null ? `<div class="kpi"><div class="l">Sales (paid)</div><div class="v">${fmt(x.sales)}</div></div>
       <div class="kpi"><div class="l">Sales minus expenses</div><div class="v" style="color:${x.sales - total < 0 ? 'var(--warn)' : 'inherit'}">${fmt(x.sales - total)}</div><div class="s">${x.sales ? Math.round((total / x.sales) * 100) + '% of sales spent' : ''}</div></div>` : ''}
     </div>
@@ -1742,16 +1748,27 @@ function renderExpenses(el) {
         <h2>${editing ? 'Edit expense' : 'Add expense'}</h2>
         <label class="field">Amount (Rs)<input name="amount" data-ex="amount" type="number" min="1" step="1" inputmode="numeric" value="${esc(f.amount)}" required></label>
         <div><div class="lbl">Category</div><div class="chips">${types.map((t) => `<button type="button" class="chip-sm ${f.type === t ? 'on' : ''}" data-act="exType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
-        <label class="field">Paid to (vendor / person)<input data-ex="vendor" list="ex-vendors" value="${esc(f.vendor)}" placeholder="e.g. Horeca Solution, Dawn, LESCO"></label>
+        <label class="field">${isLater ? 'Owed to (vendor / person)' : 'Paid to (vendor / person)'}<input data-ex="vendor" list="ex-vendors" value="${esc(f.vendor)}" placeholder="e.g. Horeca Solution, Dawn, LESCO"></label>
         <datalist id="ex-vendors">${exVendors().map((v) => `<option value="${esc(v)}">`).join('')}</datalist>
-        <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${f.method === pm ? 'on' : ''}" data-act="exMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
+        <div><div class="lbl">Paid by</div><div class="chips">${EXP_METHODS.map((pm) => `<button type="button" class="chip-sm ${f.method === pm ? 'on' : ''}" data-act="exMethod" data-v="${pm}">${pm}</button>`).join('')}</div>
+          ${isLater ? '<div class="muted small" style="margin-top:6px">Not paid yet — goes to “Pay later”, not into expenses. Mark it paid when you pay, then it’s added as an expense that day.</div>' : ''}</div>
         <label class="field">Details<input data-ex="note" value="${esc(f.note)}" placeholder="e.g. 10 kg cheese, bill no. 452"></label>
         ${owner ? `<label class="field">Date &amp; time <span class="muted small">(leave empty for now)</span><input type="datetime-local" data-ex="when" value="${esc(f.when)}"></label>` : ''}
         <div class="row">${editing ? '<button type="button" class="btn btn-lg" data-act="exCancel">Cancel</button>' : ''}
-          <button type="submit" class="btn btn-primary btn-lg grow" ${x.ready ? '' : 'disabled'}>${editing ? 'Save changes' : 'Save expense'}</button></div>
+          <button type="submit" class="btn btn-primary btn-lg grow" ${x.ready ? '' : 'disabled'}>${editing ? 'Save changes' : isLater ? 'Save to Pay later' : 'Save expense'}</button></div>
         ${owner ? '<div class="muted small">Categories are set in Settings → Expense types.</div>' : ''}
       </form>
       <div class="stack">
+        ${later.length ? `<div class="panel"><h2>Pay later · still owed ${fmt(laterTotal)}</h2>
+          <div class="muted small" style="margin-bottom:8px">Not counted in expenses yet. ${owner ? 'Tap “Mark paid” when you pay — it then becomes an expense for that day.' : 'The owner marks these paid.'}</div>
+          <div class="tbl-wrap"><table class="tbl"><tbody>${later.map((e) => { const d = exSplit(e.description); return `<tr>
+            <td style="width:110px">${esc(fmtDate(e.created_at))}<div class="muted small">${fmtTime(e.created_at)}</div></td>
+            <td><b>${esc(d.vendor || e.type)}</b><div class="muted small">${esc([d.vendor ? e.type : '', d.note].filter(Boolean).join(' · ') || '—')}</div></td>
+            <td class="num"><b>${fmt(e.amount)}</b></td>
+            <td class="num" style="white-space:nowrap">${owner ? (x.payId === e.id
+              ? `<div class="muted small" style="margin-bottom:4px">Paid by:</div><div class="chips" style="justify-content:flex-end">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm" data-act="exLaterDo" data-id="${e.id}" data-v="${pm}">${pm}</button>`).join('')}<button type="button" class="chip-sm" data-act="exLaterPay" data-id="">Cancel</button></div>`
+              : `<button type="button" class="btn" data-act="exLaterPay" data-id="${e.id}">Mark paid</button><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="exEdit" data-id="${e.id}" aria-label="Edit">${icon('edit', 16)}</button><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="exDel" data-id="${e.id}" aria-label="Delete">${icon('trash', 16)}</button>`) : ''}</td>
+          </tr>`; }).join('')}</tbody></table></div></div>` : ''}
         <div class="ex-split">
           <div class="panel"><h2>By category</h2>${exBars(byCat, total)}</div>
           <div class="panel"><h2>By vendor</h2>${exBars(byVendor.slice(0, 8), total)}</div>
@@ -3118,8 +3135,9 @@ const ACT = {
     const m = S.m, amount = Math.round(Number(m.amount));
     if (!(amount > 0)) throw new Error('Enter the amount');
     const e = await api.addExpense({ amount, method: m.method, type: m.type, description: m.description.trim(), by_name: S.me.profile.name, created_by: LIVE ? S.me.user.id : null });
-    m.list.push(e); m.amount = ''; m.description = '';
-    renderExpenseModal(); toast(`Expense saved · ${fmt(amount)}`);
+    if (m.method !== PAY_LATER) m.list.push(e);
+    m.amount = ''; m.description = '';
+    renderExpenseModal(); toast(m.method === PAY_LATER ? `Saved to Pay later · ${fmt(amount)} (not added to expenses)` : `Expense saved · ${fmt(amount)}`);
   }),
   expDel: (d) => {
     if (!confirm('Delete this expense?')) return;
@@ -3193,16 +3211,25 @@ const ACT = {
   exPreset: (d) => { const r = presetRange(d.v); Object.assign(S.ex, { preset: d.v, from: toLocalInput(r[0]), to: toLocalInput(r[1]), loaded: false }); renderScreen(); },
   exType: (d) => { S.ex.form.type = d.v; renderScreen(); },
   exMethod: (d) => { S.ex.form.method = d.v; renderScreen(); },
+  exLaterPay: (d) => { S.ex.payId = d.id ? Number(d.id) : null; renderScreen(); },
+  exLaterDo: (d) => run(async () => {
+    const e = (S.ex.later || []).find((x) => x.id === Number(d.id)); if (!e) return;
+    const billDay = fmtDate(e.created_at);
+    // Paid now → it becomes a normal expense today (so it comes off today's cash if paid in cash).
+    await api.updateExpense(e.id, { method: d.v, created_at: new Date().toISOString(), description: `${e.description || ''} (bill of ${billDay}, paid later)`.trim() });
+    S.ex.payId = null;
+    await exLoad(); renderScreen(); toast(`Marked paid by ${d.v} · ${fmt(e.amount)} added to today’s expenses`);
+  }),
   exCancel: () => { S.ex.form = exBlankForm(); S.ex.editId = null; renderScreen(); },
   exEdit: (d) => {
-    const e = S.ex.list.find((x) => x.id === Number(d.id)); if (!e) return;
+    const e = S.ex.list.concat(S.ex.later || []).find((x) => x.id === Number(d.id)); if (!e) return;
     const p = exSplit(e.description);
     S.ex.form = { amount: String(Number(e.amount)), type: e.type, vendor: p.vendor, method: e.method, note: p.note, when: toLocalInput(new Date(e.created_at)) };
     S.ex.editId = e.id; renderScreen(); $('[data-ex=amount]')?.focus();
   },
   exDel: (d) => {
     if (!confirm('Delete this expense?')) return;
-    run(async () => { await api.deleteExpense(Number(d.id)); S.ex.list = S.ex.list.filter((e) => e.id !== Number(d.id)); if (S.ex.editId === Number(d.id)) { S.ex.editId = null; S.ex.form = exBlankForm(); } renderScreen(); toast('Expense deleted'); });
+    run(async () => { await api.deleteExpense(Number(d.id)); S.ex.list = S.ex.list.filter((e) => e.id !== Number(d.id)); S.ex.later = (S.ex.later || []).filter((e) => e.id !== Number(d.id)); if (S.ex.editId === Number(d.id)) { S.ex.editId = null; S.ex.form = exBlankForm(); } renderScreen(); toast('Expense deleted'); });
   },
   clReload: () => run(async () => { await clLoad(true); renderScreen(); toast('Numbers refreshed'); }),
   clResetRange: () => { Object.assign(S.cl, { fromSet: false, toSet: false, loaded: false }); renderScreen(); },
@@ -3282,7 +3309,7 @@ const SUBMIT = {
     const row = { amount, type: f.type, method: f.method, description: exJoin(f.vendor, f.note) };
     if (f.when) { const d = new Date(f.when); if (isNaN(d)) throw new Error('Check the date & time'); row.created_at = d.toISOString(); }
     if (x.editId != null) { await api.updateExpense(x.editId, row); toast(`Expense updated · ${fmt(amount)}`); }
-    else { await api.addExpense({ ...row, by_name: S.me.profile.name, created_by: LIVE ? S.me.user.id : null }); toast(`Expense saved · ${fmt(amount)}`); }
+    else { await api.addExpense({ ...row, by_name: S.me.profile.name, created_by: LIVE ? S.me.user.id : null }); toast(row.method === PAY_LATER ? `Saved to Pay later · ${fmt(amount)} (not added to expenses)` : `Expense saved · ${fmt(amount)}`); }
     x.form = { ...exBlankForm(), type: f.type, method: f.method }; x.editId = null;
     await exLoad(); renderScreen(); $('[data-ex=amount]')?.focus();
   }),

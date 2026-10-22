@@ -17,6 +17,10 @@ export function bmsmReward(subtotal, rules) {
 
 // Payment methods. "Digital" ones get the reduced PRA rate (card / mobile wallet / bank).
 export const PAY_METHODS = ['Cash', 'Card', 'JazzCash', 'Easypaisa', 'Bank transfer'];
+// Expenses can also be "Pay later" (a bill owed to a vendor). Those are NOT counted as expenses
+// anywhere until they are marked paid — then they become a normal expense on the day they're paid.
+export const PAY_LATER = 'Pay later';
+export const EXP_METHODS = [...PAY_METHODS, PAY_LATER];
 export const isDigital = (method) => !!method && method !== 'Cash' && method !== 'Cash (COD)';
 export const taxRateFor = (method, s) => Number(isDigital(method) ? s.tax_digital_pct : s.tax_cash_pct) || 0;
 

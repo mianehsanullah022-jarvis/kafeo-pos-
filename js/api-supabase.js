@@ -107,7 +107,11 @@ export function createSupabaseApi(url, key) {
     },
     // ---- expenses ----
     async expensesBetween(fromIso, toIso) {
-      return allPages(() => sb.from('expenses').select('*').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).order('id', { ascending: true }), 50000);
+      // Real (paid) expenses only — "Pay later" bills are kept out of every total until marked paid.
+      return allPages(() => sb.from('expenses').select('*').neq('method', 'Pay later').gte('created_at', fromIso).lt('created_at', toIso).order('created_at', { ascending: true }).order('id', { ascending: true }), 50000);
+    },
+    async payLaterExpenses() {
+      return allPages(() => sb.from('expenses').select('*').eq('method', 'Pay later').order('created_at', { ascending: true }).order('id', { ascending: true }), 50000);
     },
     async addExpense(e) { return must(await sb.from('expenses').insert(e).select().single()); },
     async updateExpense(id, patch) { return must(await sb.from('expenses').update(patch).eq('id', id).select().single()); },

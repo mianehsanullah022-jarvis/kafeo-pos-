@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.21-1617';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1600';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -142,7 +142,8 @@ export function createDemoApi() {
       notify('stock');
     },
     async movesBetween(fromIso, toIso) { load(); return clone((db.moves || []).filter((m) => m.created_at >= fromIso && m.created_at < toIso)); },
-    async expensesBetween(fromIso, toIso) { load(); return clone((db.expenses || []).filter((e) => e.created_at >= fromIso && e.created_at < toIso)); },
+    async expensesBetween(fromIso, toIso) { load(); return clone((db.expenses || []).filter((e) => e.method !== 'Pay later' && e.created_at >= fromIso && e.created_at < toIso)); },
+    async payLaterExpenses() { load(); return clone((db.expenses || []).filter((e) => e.method === 'Pay later')); },
     async addExpense(e) {
       load(); db.expenses = db.expenses || []; db.nextExpense = db.nextExpense || 1;
       const row = { method: 'Cash', type: 'Other', description: '', by_name: '', created_at: new Date().toISOString(), ...e, id: db.nextExpense++ };

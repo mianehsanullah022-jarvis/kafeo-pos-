@@ -123,6 +123,8 @@ The **Live dashboard** tab keeps the quick charts, staff incentives and the **Z-
 
 **Expenses** — **Add expense** on the Orders screen (any staff): amount, type, payment method, description. Expenses appear in the Full Report, Expense Report, Profit / Loss and Z-report.
 
+**Pay later** — pick *Pay later* under "Paid by" for a bill you owe but haven't paid yet. It is **not** counted in expenses, reports, the Z-report or shift closing; it shows in the **Pay later** list on the Expenses screen. When you pay it, the owner taps **Mark paid** and picks the method (Cash, JazzCash…) — it then becomes a normal expense on that day. No database change needed.
+
 **Menu & prices (owner)** — change a price, hide an item, add a new one, upload a photo for any item (shown on the order screen; items without a photo get a coloured category tile). Every counter updates instantly. Prices: `549` for one price, `S=999, M=1549, L=2399` for sizes.
 
 **Settings (owner)** — GST/PRA tax for cash and for card/wallets, prices-include-tax option, PRA/NTN number for receipts, service charge %, delivery fee, rounding, tables, discount limit for cashiers, quick discount buttons, discount reasons, banks, loyalty rule, Buy More Save More, riders.
