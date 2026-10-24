@@ -123,6 +123,11 @@ export function createSupabaseApi(url, key) {
     // ---- shift closing ----
     async listClosings(limit = 60) { return must(await sb.from('shift_closings').select('*').order('shift_to', { ascending: false }).limit(limit)); },
     async addClosing(c) { return must(await sb.from('shift_closings').insert(c).select().single()); },
+    async updateClosing(id, patch) {
+      const rows = must(await sb.from('shift_closings').update(patch).eq('id', id).select());
+      if (!rows.length) throw new Error('Only the owner can edit a closing');
+      return rows[0];
+    },
     async deleteClosing(id) { must(await sb.from('shift_closings').delete().eq('id', id)); },
     async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
 

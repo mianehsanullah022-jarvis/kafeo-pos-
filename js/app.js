@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.22-1730';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.22-1730';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1730';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.24-2027';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.24-2027';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.24-2027';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.22-1730';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.22-1730';
-import { pdfBlob } from './pdf.js?v=2026.10.22-1730';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.22-1730';
+} from './logic.js?v=2026.10.24-2027';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.24-2027';
+import { pdfBlob } from './pdf.js?v=2026.10.24-2027';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.24-2027';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.22-1730')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.24-2027')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -334,6 +334,7 @@ function renderShell() {
     S.m = null;
     if (kind === 'details' && S.route === 'order') renderSummary();
     if (S.route === 'dashboard' && S.dash.needsRender) { S.dash.needsRender = false; renderScreen(); }
+    if (S.route === 'closing' && kind === 'expense') clRefreshLive();
   });
   renderLiveDot();
   renderScreen();
@@ -1864,16 +1865,50 @@ function clBlankForm(last) {
     remarks: ''
   };
 }
+// The till count being typed is kept on this device, so a refresh (or 10) never loses it.
+// It belongs to one shift (its start time) and is cleared once that shift is closed.
+const CL_DRAFT = 'kafeo-closing-draft';
+function clDraftRead(fromIso) {
+  try { const d = JSON.parse(localStorage.getItem(CL_DRAFT) || 'null'); return d && d.fromIso === fromIso && d.f ? d.f : null; } catch { return null; }
+}
+function clDraftSave() {
+  const c = S.cl; if (!c?.f || c.editId) return;
+  clearTimeout(c.dt);
+  c.dt = setTimeout(() => { try { localStorage.setItem(CL_DRAFT, JSON.stringify({ fromIso: c.fromIso, f: c.f, at: new Date().toISOString() })); } catch { /* storage full / private mode */ } }, 250);
+}
+function clDraftClear() { try { localStorage.removeItem(CL_DRAFT); } catch { /* ignore */ } }
+// Turns a saved closing back into the form, for editing.
+function clFormFrom(h) {
+  const n = h.notes || {};
+  return {
+    shift_name: h.shift_name || '', received: h.received ? String(Math.round(h.received)) : '', received_from: h.received_from || '',
+    opening: String(Math.round(Number(h.opening) || 0)), notes: Object.fromEntries(CL_NOTES.filter((d) => n[d]).map((d) => [d, String(n[d])])), coins: n.coins ? String(n.coins) : '',
+    slips: (h.slips || []).map((x) => ({ label: x.label, amount: String(x.amount) })), remarks: h.remarks || ''
+  };
+}
 async function clLoad(keepForm) {
   const c = S.cl;
   try { c.history = await api.listClosings(60); c.ready = true; } catch (e) { c.history = []; c.ready = false; console.warn('Shift closing not set up:', e.message); }
   c.last = c.history[0] || null;
+  if (c.editId) {
+    // Editing a saved closing: its own times; "last" = the closing before it (for the opening hint).
+    const h = c.history.find((x) => x.id === c.editId);
+    if (!h) { c.editId = null; c.f = null; } else {
+      c.last = c.history.find((x) => new Date(x.shift_to) <= new Date(h.shift_from) && x.id !== h.id) || null;
+      if (!c.fromSet) { c.fromIso = new Date(h.shift_from).toISOString(); c.from = toLocalInput(new Date(c.fromIso)); } else c.fromIso = new Date(c.from).toISOString();
+      if (!c.toSet) { c.toIso = new Date(h.shift_to).toISOString(); c.to = toLocalInput(new Date(c.toIso)); } else c.toIso = new Date(c.to).toISOString();
+      if (!c.f) c.f = clFormFrom(h);
+    }
+  }
   // Exact time (to the second) the last shift closed, so nothing is counted twice or missed.
-  if (!c.fromSet) { c.fromIso = c.last ? new Date(c.last.shift_to).toISOString() : businessDayStart().toISOString(); c.from = toLocalInput(new Date(c.fromIso)); }
+  if (c.editId) { /* times set above */ } else if (!c.fromSet) { c.fromIso = c.last ? new Date(c.last.shift_to).toISOString() : businessDayStart().toISOString(); c.from = toLocalInput(new Date(c.fromIso)); }
   else c.fromIso = new Date(c.from).toISOString();
-  if (!c.toSet) c.to = toLocalInput(new Date(Date.now() + 60000));
-  if (!keepForm || !c.f) c.f = clBlankForm(c.last);
-  const from = c.fromIso, to = new Date(c.to).toISOString();
+  if (!c.editId) {
+    if (!c.toSet) c.to = toLocalInput(new Date(Date.now() + 60000));
+    c.toIso = new Date(c.to).toISOString();
+    if (!keepForm || !c.f) c.f = clDraftRead(c.fromIso) || clBlankForm(c.last);
+  }
+  const from = c.fromIso, to = c.editId && !c.toSet ? new Date(new Date(c.toIso).getTime() + 1).toISOString() : c.toIso;
   const [orders, exp] = await Promise.all([api.ordersBetween(from, to), api.expensesBetween(from, to).catch(() => [])]);
   const paid = orders.filter((o) => o.paid && o.status !== 'cancelled');
   const cash = paid.filter((o) => CASH_METHODS.includes(o.payment)).reduce((a, o) => a + Number(o.total || 0), 0);
@@ -1889,6 +1924,7 @@ async function clLoad(keepForm) {
   c.expCash = exp.filter((e) => e.method === 'Cash').reduce((a, e) => a + Number(e.amount), 0);
   c.expOther = exp.filter((e) => e.method !== 'Cash').reduce((a, e) => a + Number(e.amount), 0);
   c.expList = exp.filter((e) => e.method === 'Cash');
+  c.expAll = exp;
   c.loaded = true;
 }
 function clCalc() {
@@ -1924,13 +1960,14 @@ function renderClosing(el) {
   const line = (label, value, opts = {}) => `<div class="cl-line ${opts.cls || ''}"><span>${label}${opts.sub ? `<small>${opts.sub}</small>` : ''}</span><b ${opts.key ? `data-clv="${opts.key}"` : ''}>${value}</b></div>`;
   const slipNames = [...new Set(c.history.flatMap((h) => (h.slips || []).map((x) => x.label)).filter(Boolean))];
   el.innerHTML = `
-    <div class="screen-head"><h1>Shift closing</h1><span class="muted">${esc(rdt(new Date(c.from)))} → ${c.toSet ? esc(rdt(new Date(c.to))) : 'now'}</span></div>
+    <div class="screen-head"><h1>Shift closing</h1><span class="muted">${esc(rdt(new Date(c.from)))} → ${c.toSet || c.editId ? esc(rdt(new Date(c.to))) : 'now'}</span></div>
+    ${c.editId ? `<div class="cl-edit"><b>Editing the closing of ${esc(fmtDate(c.toIso))} ${esc(fmtTime(c.toIso))}</b><span>Sales and expenses are worked out again from the POS. Change anything, then press <b>Save changes</b>.</span><button type="button" class="btn" data-act="clEditCancel">Cancel editing</button></div>` : ''}
     ${c.ready ? '' : '<div class="error" style="margin-bottom:12px">Shift closing needs a one-time database update: run supabase/migrations/008_shift_closings.sql in Supabase. You can still work it out and print it, but it won’t be saved.</div>'}
     ${s.unpaidCount ? `<div class="cl-warn">${s.unpaidCount} bill${s.unpaidCount > 1 ? 's are' : ' is'} still unpaid (${fmt(s.unpaid)}) — not counted in sales. Take payment in Orders first, then close.</div>` : ''}
     <div class="row wrap" style="margin-bottom:14px">
       <label class="field ex-date">Shift started<input type="datetime-local" data-clr="from" value="${esc(c.from)}" ${owner ? '' : 'disabled'}></label>
       <label class="field ex-date">Shift ends<input type="datetime-local" data-clr="to" value="${esc(c.to)}" ${owner ? '' : 'disabled'}></label>
-      ${owner && (c.fromSet || c.toSet) ? '<button type="button" class="btn" data-act="clResetRange">Back to: since last closing → now</button>' : ''}
+      ${owner && !c.editId && (c.fromSet || c.toSet) ? '<button type="button" class="btn" data-act="clResetRange">Back to: since last closing → now</button>' : ''}
       <label class="field ex-date">Shift / name<input data-cl="shift_name" value="${esc(f.shift_name)}" placeholder="e.g. Morning, Night, Ali’s shift"></label>
       <span class="grow"></span>
       <button type="button" class="btn" data-act="clReload">Refresh numbers</button>
@@ -1950,6 +1987,13 @@ function renderClosing(el) {
           <input class="cl-amt" data-cl="opening" type="number" min="0" step="1" inputmode="numeric" value="${esc(f.opening)}" placeholder="0" aria-label="Opening balance"></div>
         ${line('Total cash', fmt(k.totalCash), { key: 'totalCash', cls: 'cl-tot', sub: 'opening + cash sale + received' })}
         ${line('Expenses (cash)', '− ' + fmt(c.expCash), { sub: `${c.expList.length} paid from the till${c.expOther ? ` · ${fmt(c.expOther)} more paid by card/bank, not from the till` : ''}` })}
+        <details class="cl-exp" ${c.expOpen ? 'open' : ''}><summary>See / edit this shift’s expenses (${(c.expAll || []).length})</summary>
+          ${(c.expAll || []).length ? `<div class="tbl-wrap"><table class="tbl compact"><tbody>${c.expAll.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((e) => { const p = exSplit(e.description); return `<tr>
+            <td style="white-space:nowrap">${esc(fmtTime(e.created_at))}</td><td><b>${esc(p.vendor || e.type)}</b><div class="muted small">${esc([p.vendor ? e.type : '', p.note].filter(Boolean).join(' · ') || '—')}</div></td>
+            <td>${esc(e.method)}</td><td class="num"><b>${fmt(e.amount)}</b></td>
+            <td class="num" style="white-space:nowrap">${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clExpEdit" data-id="${e.id}" aria-label="Edit expense">${icon('edit', 16)}</button><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clExpDel" data-id="${e.id}" aria-label="Delete expense">${icon('trash', 16)}</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="muted small" style="padding:6px 0">No expenses in this shift.</div>'}
+          <button type="button" class="btn btn-sm" data-act="expenses" style="margin-top:8px">+ Add expense</button>
+        </details>
         ${line('Final cash remaining', fmt(k.remaining), { key: 'remaining', cls: 'cl-tot cl-big' })}
       </div>
       <div class="panel cl-sheet">
@@ -1971,9 +2015,9 @@ function renderClosing(el) {
         <label class="field" style="margin-top:10px">Remarks<input data-cl="remarks" value="${esc(f.remarks)}" placeholder="e.g. 118 short — counted twice"></label>
         <div class="row" style="margin-top:12px">
           <button type="button" class="btn btn-lg" data-act="clPrint">${icon('print', 18)} Print</button>
-          <button type="button" class="btn btn-primary btn-lg grow" data-act="clSave" ${c.ready ? '' : 'disabled'}>Close shift &amp; save</button>
+          <button type="button" class="btn btn-primary btn-lg grow" data-act="clSave" ${c.ready ? '' : 'disabled'}>${c.editId ? 'Save changes' : 'Close shift &amp; save'}</button>
         </div>
-        <div class="muted small" style="margin-top:6px">After saving, the next shift starts from this time and its opening balance is this shift’s cash in till.</div>
+        <div class="muted small" style="margin-top:6px">${c.editId ? 'Only this closing changes. The next shift’s opening balance stays as it was saved — edit that closing too if needed.' : 'Your count is kept on this device even if you refresh. After saving, the next shift starts from this time and its opening balance is this shift’s cash in till.'}</div>
       </div>
     </div>
     <h2 style="margin:22px 0 10px">Past closings</h2>
@@ -1982,15 +2026,30 @@ function renderClosing(el) {
         <td>${esc(h.shift_name || '—')}<div class="muted small">${esc(fmtTime(h.shift_from))} → ${esc(fmtTime(h.shift_to))}</div></td>
         <td class="num">${fmt(h.total_sale)}</td><td class="num">${fmt(h.remaining)}</td><td class="num">${fmt(h.till_cash)}</td>
         <td class="num"><b style="color:${clDiffColor(Number(h.difference))}">${clDiffText(Number(h.difference))}</b></td>
-        <td class="num" style="white-space:nowrap"><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clPrintOld" data-id="${h.id}" aria-label="Print">${icon('print', 16)}</button>${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clDel" data-id="${h.id}" aria-label="Delete">${icon('trash', 16)}</button>` : ''}</td></tr>`).join('')}
+        <td class="num" style="white-space:nowrap"><button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clPrintOld" data-id="${h.id}" aria-label="Print">${icon('print', 16)}</button>${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clEdit" data-id="${h.id}" aria-label="Edit closing">${icon('edit', 16)}</button>`: ''}${owner ? `<button type="button" class="icon-btn" style="width:34px;height:34px" data-act="clDel" data-id="${h.id}" aria-label="Delete">${icon('trash', 16)}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">No shifts closed yet.</div>'}`;
+}
+function renderClExpModal() {
+  const m = S.m, types = [...new Set([...(S.settings.expense_types || ['Other']), m.type])];
+  openModal('md', `
+    ${modalHead('Edit expense', 'Changes the expense everywhere — Expenses, reports and this shift')}
+    <div class="mb stack">
+      <label class="field">Amount (Rs)<input data-m="amount" type="number" min="1" step="1" inputmode="numeric" value="${esc(m.amount)}" autofocus></label>
+      <div><div class="lbl">Category</div><div class="chips">${types.map((t) => `<button type="button" class="chip-sm ${m.type === t ? 'on' : ''}" data-act="clExpType" data-v="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>
+      <label class="field">Paid to (vendor / person)<input data-m="vendor" value="${esc(m.vendor)}"></label>
+      <div><div class="lbl">Paid by</div><div class="chips">${PAY_METHODS.map((pm) => `<button type="button" class="chip-sm ${m.method === pm ? 'on' : ''}" data-act="clExpMethod" data-v="${pm}">${pm}</button>`).join('')}</div></div>
+      <label class="field">Details<input data-m="note" value="${esc(m.note)}"></label>
+      <label class="field">Date &amp; time<input type="datetime-local" data-m="when" value="${esc(m.when)}"></label>
+    </div>
+    <footer class="mf"><span class="grow"></span><button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
+      <button type="button" class="btn btn-primary btn-lg" data-act="clExpSave">Save changes</button></footer>`);
 }
 // Everything that gets saved / printed for one closing.
 function clRecord() {
   const c = S.cl, s = c.sales, f = c.f, k = clCalc();
   const notes = {}; CL_NOTES.forEach((d) => { if (clN(f.notes[d])) notes[d] = clN(f.notes[d]); }); if (clN(f.coins)) notes.coins = clN(f.coins);
   return {
-    shift_from: c.fromIso, shift_to: c.toSet ? new Date(c.to).toISOString() : new Date().toISOString(), shift_name: f.shift_name.trim(),
+    shift_from: c.fromIso, shift_to: c.editId ? c.toIso : c.toSet ? new Date(c.to).toISOString() : new Date().toISOString(), shift_name: f.shift_name.trim(),
     cash_sales: s.cash, card_sales: s.card, discount: s.discount, total_sale: s.total,
     received: k.received, received_from: f.received_from.trim(), opening: k.opening, total_cash: k.totalCash,
     expenses: c.expCash, remaining: k.remaining, notes_cash: k.notesCash, notes,
@@ -3290,20 +3349,58 @@ const ACT = {
   },
   clReload: () => run(async () => { await clLoad(true); renderScreen(); toast('Numbers refreshed'); }),
   clResetRange: () => { Object.assign(S.cl, { fromSet: false, toSet: false, loaded: false }); renderScreen(); },
-  clSlipAdd: () => { S.cl.f.slips.push({ label: '', amount: '' }); renderScreen(); const l = document.querySelectorAll('#screen [data-cls][data-k=label]'); l[l.length - 1]?.focus(); },
-  clSlipDel: (d) => { S.cl.f.slips.splice(Number(d.i), 1); renderScreen(); },
+  clSlipAdd: () => { S.cl.f.slips.push({ label: '', amount: '' }); clDraftSave(); renderScreen(); const l = document.querySelectorAll('#screen [data-cls][data-k=label]'); l[l.length - 1]?.focus(); },
+  clSlipDel: (d) => { S.cl.f.slips.splice(Number(d.i), 1); clDraftSave(); renderScreen(); },
   clPrint: () => run(async () => { printHtml(await clSlip({ ...clRecord(), shift_to: S.cl.toSet ? new Date(S.cl.to).toISOString() : new Date().toISOString() })); }),
   clPrintOld: (d) => run(async () => { const h = S.cl.history.find((x) => x.id === Number(d.id)); if (h) printHtml(await clSlip(h)); }),
   clDel: (d) => {
     if (!confirm('Delete this shift closing? The next shift’s opening balance may need fixing.')) return;
     run(async () => { await api.deleteClosing(Number(d.id)); S.cl.loaded = false; renderScreen(); toast('Closing deleted'); });
   },
+  clEdit: (d) => {
+    const c = S.cl; if (!isOwner()) return;
+    Object.assign(c, { editId: Number(d.id), f: null, fromSet: false, toSet: false, loaded: false });
+    renderScreen(); $('#screen')?.scrollTo?.(0, 0); window.scrollTo(0, 0);
+  },
+  clEditCancel: () => { Object.assign(S.cl, { editId: null, f: null, fromSet: false, toSet: false, loaded: false }); renderScreen(); },
+  clExpEdit: (d) => {
+    const e = (S.cl.expAll || []).find((x) => x.id === Number(d.id)); if (!e) return;
+    const p = exSplit(e.description);
+    S.m = { kind: 'clExp', id: e.id, amount: String(Math.round(e.amount)), type: e.type, method: e.method, vendor: p.vendor, note: p.note, when: toLocalInput(new Date(e.created_at)) };
+    renderClExpModal();
+  },
+  clExpType: (d) => { S.m.type = d.v; renderClExpModal(); },
+  clExpMethod: (d) => { S.m.method = d.v; renderClExpModal(); },
+  clExpSave: () => run(async () => {
+    const m = S.m, amount = Math.round(Number(m.amount));
+    if (!(amount > 0)) throw new Error('Enter the amount');
+    const d = new Date(m.when); if (isNaN(d)) throw new Error('Check the date & time');
+    await api.updateExpense(m.id, { amount, type: m.type, method: m.method, description: exJoin(m.vendor || '', m.note || ''), created_at: d.toISOString() });
+    closeModal(); if (S.ex) S.ex.loaded = false;
+    await clLoad(true); renderScreen(); toast(`Expense updated · ${fmt(amount)}`);
+  }),
+  clExpDel: (d) => {
+    if (!confirm('Delete this expense?')) return;
+    run(async () => { await api.deleteExpense(Number(d.id)); if (S.ex) S.ex.loaded = false; await clLoad(true); renderScreen(); toast('Expense deleted'); });
+  },
   clSave: () => {
     const c = S.cl, rec = clRecord();
+    if (c.editId) {
+      const { by_name, ...patch } = rec;
+      if (!confirm(`Save changes to this closing?\n\nFinal cash remaining: ${fmt(rec.remaining)}\nFinal cash in till: ${fmt(rec.till_cash)}\nDifference: ${clDiffText(rec.difference)}`)) return;
+      run(async () => {
+        const row = await api.updateClosing(c.editId, { ...patch, remarks: patch.remarks });
+        Object.assign(c, { editId: null, f: null, fromSet: false, toSet: false, loaded: false });
+        renderScreen();
+        toast(`Closing updated · ${clDiffText(row.difference)}`, { action: { label: 'Print', fn: () => run(async () => printHtml(await clSlip(row))) } });
+      });
+      return;
+    }
     if (c.sales.unpaidCount && !confirm(`${c.sales.unpaidCount} bill(s) are still unpaid (${fmt(c.sales.unpaid)}). Close the shift anyway?`)) return;
     if (!confirm(`Close this shift?\n\nFinal cash remaining: ${fmt(rec.remaining)}\nFinal cash in till: ${fmt(rec.till_cash)}\nDifference: ${clDiffText(rec.difference)}`)) return;
     run(async () => {
       const row = await api.addClosing({ ...rec, created_by: LIVE ? S.me.user.id : null });
+      clDraftClear();
       if (rec.received_from && rec.received_from !== (S.settings.closing_received_from || 'Naseer Sb') && isOwner()) {
         const data = { ...S.settings, closing_received_from: rec.received_from }; try { await api.saveSettings(data); S.settings = data; } catch { /* not important */ }
       }
@@ -3484,9 +3581,9 @@ document.addEventListener('input', (e) => {
   }
   if (t.dataset.ex !== undefined && S.ex) { S.ex.form[t.dataset.ex] = t.value; return; }
   if (S.cl?.f && t.closest('#screen')) {
-    if (t.dataset.cl !== undefined) { S.cl.f[t.dataset.cl] = t.value; clPaint(); return; }
-    if (t.dataset.cln !== undefined) { S.cl.f.notes[t.dataset.cln] = t.value; clPaint(); return; }
-    if (t.dataset.cls !== undefined) { const x = S.cl.f.slips[Number(t.dataset.cls)]; if (x) { x[t.dataset.k] = t.value; x.carried = false; } clPaint(); return; }
+    if (t.dataset.cl !== undefined) { S.cl.f[t.dataset.cl] = t.value; clPaint(); clDraftSave(); return; }
+    if (t.dataset.cln !== undefined) { S.cl.f.notes[t.dataset.cln] = t.value; clPaint(); clDraftSave(); return; }
+    if (t.dataset.cls !== undefined) { const x = S.cl.f.slips[Number(t.dataset.cls)]; if (x) { x[t.dataset.k] = t.value; x.carried = false; } clPaint(); clDraftSave(); return; }
   }
   if (t.dataset.exq !== undefined && S.ex) { S.ex.q = t.value; clearTimeout(S.ex.qt); S.ex.qt = setTimeout(() => { renderScreen(); const i = $('[data-exq]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); return; }
   if (t.dataset.m && S.m) {               // field inside a pop-up
@@ -3538,6 +3635,7 @@ document.addEventListener('change', (e) => {
   if (!el) return;
   run(async () => { await api.updateOrder(Number(el.dataset.id), { rider_id: el.value ? Number(el.value) : null }); await refreshOrders(); renderScreen(); });
 });
+document.addEventListener('toggle', (e) => { if (e.target.classList?.contains('cl-exp') && S.cl) S.cl.expOpen = e.target.open; }, true);
 document.addEventListener('submit', (e) => {
   const form = e.target.closest('[data-submit]');
   if (!form) return;

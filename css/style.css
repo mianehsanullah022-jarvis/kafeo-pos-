@@ -702,3 +702,7 @@ a.tool { text-decoration: none; }
 .cl-slip input:first-child { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: inherit; }
 .cl-warn { background: #fff4e0; color: #7a4b00; border: 1px solid #f0d29a; padding: 10px 14px; border-radius: 12px; margin-bottom: 12px; font-weight: 600; }
 @media (max-width: 600px) { .cl-grid { grid-template-columns: 1fr; } .cl-amt { width: 110px; } }
+.cl-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; background: #eef4ff; color: #1d3a6b; border: 1px solid #c6d6f2; padding: 10px 14px; border-radius: 12px; margin-bottom: 12px; }
+.cl-edit span { flex: 1; min-width: 200px; font-size: 13px; }
+.cl-exp { margin: 4px 0 6px; }
+.cl-exp summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); padding: 6px 0; }

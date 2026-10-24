@@ -1,7 +1,7 @@
 // Demo backend: same functions as the live one, but data stays in this browser
 // (localStorage). Other tabs of the same browser update live, so you can open
 // the counter in one tab and the kitchen in another to try the flow.
-import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.22-1730';
+import { CATEGORIES, ITEMS, DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.24-2027';
 
 const KEY = 'kafeo-pos-demo-v1';
 const DEMO_USERS = [
@@ -158,6 +158,7 @@ export function createDemoApi() {
       const row = { created_at: new Date().toISOString(), ...c, id: db.nextClosing++ };
       db.closings.push(row); notify('closings'); return clone(row);
     },
+    async updateClosing(id, patch) { load(); db.closings = (db.closings || []).map((c) => (c.id === id ? { ...c, ...patch } : c)); notify('closings'); return clone(db.closings.find((c) => c.id === id)); },
     async deleteClosing(id) { load(); db.closings = (db.closings || []).filter((c) => c.id !== id); notify('closings'); },
     async listMoves(limit = 300) { load(); return clone((db.moves || []).slice().reverse().slice(0, limit)); },
 
