@@ -23,11 +23,11 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 const TYPES: Record<string, string> = { Delivery: 'deliv', Takeaway: 'take', 'Dine-in': 'dine', deliv: 'deliv', take: 'take', dine: 'dine' };
-// Website launch offer: 10% off EVERY website order (delivery, takeaway, dine-in),
+// Website launch offer: 15% off EVERY website order (delivery, takeaway, dine-in),
 // from 1 Nov 2026 00:00 Pakistan time. The server decides — never the browser.
 // Keep in step with WEB_PROMO in kafeo-website/index.html.
 // DRAFT: live:false = no discount is given. Set live:true here AND in the website only when the owner says go.
-const WEB_PROMO = { live: false, start: Date.parse('2026-11-01T00:00:00+05:00'), pct: 10, reason: 'Website order 10%' };
+const WEB_PROMO = { live: false, start: Date.parse('2026-11-01T00:00:00+05:00'), pct: 15, reason: 'Website order 15%' };
 const webPromoOn = (now = Date.now()) => WEB_PROMO.live && now >= WEB_PROMO.start;
 const LIMIT_WINDOW_MIN = 15;
 const LIMIT_PER_PHONE = 4;
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
   const waPhone = Deno.env.get('CALLMEBOT_PHONE'), waKey = Deno.env.get('CALLMEBOT_APIKEY');
   if (waPhone && waKey) {
     const label = { deliv: 'Delivery', take: 'Takeaway', dine: 'Dine-in' }[type];
-    const text = `🔔 New website order #${ins.data.id} (${ref})\n${label} · Rs ${(subtotal - discount).toLocaleString('en-US')}${discount ? ` (10% off Rs ${subtotal.toLocaleString('en-US')})` : ''}\n` +
+    const text = `🔔 New website order #${ins.data.id} (${ref})\n${label} · Rs ${(subtotal - discount).toLocaleString('en-US')}${discount ? ` (${WEB_PROMO.pct}% off Rs ${subtotal.toLocaleString('en-US')})` : ''}\n` +
       lines.map((l) => `${l.qty}× ${l.name}`).join('\n') +
       `\n${name || 'Customer'} · ${phone}` + (type === 'deliv' && address ? `\n${address}` : '') + (geo ? `\n${geo.link}` : '') +
       (note ? `\nNote: ${note}` : '') + (flags.length ? `\n⚠️ Check on POS: ${flags.length} warning(s)` : '') + '\nAccept it on the POS.';
