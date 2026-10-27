@@ -26,8 +26,9 @@ const TYPES: Record<string, string> = { Delivery: 'deliv', Takeaway: 'take', 'Di
 // Website launch offer: 10% off EVERY website order (delivery, takeaway, dine-in),
 // from 1 Nov 2026 00:00 Pakistan time. The server decides — never the browser.
 // Keep in step with WEB_PROMO in kafeo-website/index.html.
-const WEB_PROMO = { start: Date.parse('2026-11-01T00:00:00+05:00'), pct: 10, reason: 'Website order 10%' };
-const webPromoOn = (now = Date.now()) => now >= WEB_PROMO.start;
+// DRAFT: live:false = no discount is given. Set live:true here AND in the website only when the owner says go.
+const WEB_PROMO = { live: false, start: Date.parse('2026-11-01T00:00:00+05:00'), pct: 10, reason: 'Website order 10%' };
+const webPromoOn = (now = Date.now()) => WEB_PROMO.live && now >= WEB_PROMO.start;
 const LIMIT_WINDOW_MIN = 15;
 const LIMIT_PER_PHONE = 4;
 const LIMIT_PER_IP = 10;
