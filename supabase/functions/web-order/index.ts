@@ -23,6 +23,11 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 const TYPES: Record<string, string> = { Delivery: 'deliv', Takeaway: 'take', 'Dine-in': 'dine', deliv: 'deliv', take: 'take', dine: 'dine' };
+// Website launch offer: 10% off EVERY website order (delivery, takeaway, dine-in),
+// from 1 Nov 2026 00:00 Pakistan time. The server decides — never the browser.
+// Keep in step with WEB_PROMO in kafeo-website/index.html.
+const WEB_PROMO = { start: Date.parse('2026-11-01T00:00:00+05:00'), pct: 10, reason: 'Website order 10%' };
+const webPromoOn = (now = Date.now()) => now >= WEB_PROMO.start;
 const LIMIT_WINDOW_MIN = 15;
 const LIMIT_PER_PHONE = 4;
 const LIMIT_PER_IP = 10;
@@ -111,13 +116,20 @@ Deno.serve(async (req) => {
   const clientTotal = Number(body.total);
   if (Number.isFinite(clientTotal) && Math.round(clientTotal) !== subtotal) flags.push(`Website showed total Rs ${Math.round(clientTotal)}, items add up to Rs ${subtotal}`);
 
+  // Same rounding as the POS (computeBill: Math.round of the % of the subtotal).
+  const promo = webPromoOn();
+  const discount = promo ? Math.round(subtotal * WEB_PROMO.pct / 100) : 0;
+  const discMeta = promo ? { scope: 'bill', type: 'pct', value: WEB_PROMO.pct, reason: WEB_PROMO.reason, bank: '' } : null;
+  const clientDisc = Number(body.discount);
+  if (Number.isFinite(clientDisc) && Math.round(clientDisc) !== discount) flags.push(`Website showed discount Rs ${Math.round(clientDisc)}, POS discount is Rs ${discount}`);
+
   const row = {
     type, table_no: '', customer_phone: phone, customer_name: name, address: type === 'deliv' ? address : '',
-    items, notes: note, subtotal, discount: 0, discount_label: '', tax: 0, tax_rate: 0, service_charge: 0,
-    delivery_fee: 0, round_off: 0, total: subtotal, payment: '', paid: false, status: 'pending', reward: '',
+    items, notes: note, subtotal, discount, discount_label: promo ? WEB_PROMO.reason : '', tax: 0, tax_rate: 0, service_charge: 0,
+    delivery_fee: 0, round_off: 0, total: subtotal - discount, payment: '', paid: false, status: 'pending', reward: '',
     created_by: null,
     meta: {
-      source: 'website', web_ref: ref, by: 'Website', discount: null, serviceOn: false, inclusive: false,
+      source: 'website', web_ref: ref, by: 'Website', discount: discMeta, serviceOn: false, inclusive: false,
       pay_pref: payPref, delivery_note: type === 'deliv' ? deliveryNote : '', geo: type === 'deliv' ? geo : null,
       distance_km: type === 'deliv' && Number.isFinite(km) && km >= 0 && km < 100 ? Math.round(km * 10) / 10 : null,
       flags, ip: ipHash, placed_at: new Date().toISOString()
@@ -137,7 +149,7 @@ Deno.serve(async (req) => {
   const waPhone = Deno.env.get('CALLMEBOT_PHONE'), waKey = Deno.env.get('CALLMEBOT_APIKEY');
   if (waPhone && waKey) {
     const label = { deliv: 'Delivery', take: 'Takeaway', dine: 'Dine-in' }[type];
-    const text = `🔔 New website order #${ins.data.id} (${ref})\n${label} · Rs ${subtotal.toLocaleString('en-US')}\n` +
+    const text = `🔔 New website order #${ins.data.id} (${ref})\n${label} · Rs ${(subtotal - discount).toLocaleString('en-US')}${discount ? ` (10% off Rs ${subtotal.toLocaleString('en-US')})` : ''}\n` +
       lines.map((l) => `${l.qty}× ${l.name}`).join('\n') +
       `\n${name || 'Customer'} · ${phone}` + (type === 'deliv' && address ? `\n${address}` : '') + (geo ? `\n${geo.link}` : '') +
       (note ? `\nNote: ${note}` : '') + (flags.length ? `\n⚠️ Check on POS: ${flags.length} warning(s)` : '') + '\nAccept it on the POS.';
@@ -147,5 +159,5 @@ Deno.serve(async (req) => {
     (globalThis as any).EdgeRuntime?.waitUntil?.(p);
   }
 
-  return json(200, { ok: true, id: ins.data.id, ref, warnings: flags.length });
+  return json(200, { ok: true, id: ins.data.id, ref, discount, total: subtotal - discount, warnings: flags.length });
 });
