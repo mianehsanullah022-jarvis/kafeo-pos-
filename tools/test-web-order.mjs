@@ -64,18 +64,20 @@ for (const c of MENU) {
 }
 for (const [nm, p] of DEALS) check('Deal: ' + nm, p);
 check('Custom: Caramel Iced Latte (2x Espresso shot, Milk, Caramel, Ice)', 800);
-for (const [nm, p] of [['Mint Margarita (S)', 325], ['Coke / Sprite 345 ml', 100], ['KAFEO Iced Latte', 800], ['Crimson Mist (S)', 375], ['Oreo Shake', 549]]) check(nm, p);
+// Quick-add suggestion buttons on the website (read from the page, so they follow price changes)
+for (const m of html.matchAll(/\["([^"\]]+)",(\d+)\]/g)) if (/\((S|L)\)$|^Coke|^KAFEO Iced Latte$/.test(m[1])) check(m[1], +m[2]);
 
 // Things that MUST be flagged
 const menu = new Map([['b6', { name: 'Zinger', station: 'kitchen', counts: null, active: true }], ['a4', { name: 'Cheese Slice', station: 'kitchen', active: true }]]);
 const t1 = buildItems([{ name: 'Zinger Burger', price: 1, qty: 1 }], menu);
 const t2 = buildItems([{ name: 'Mystery Item', price: 500, qty: 2 }], menu);
-const t3 = buildItems([{ name: 'Zinger Burger (Extra spicy, + Cheese slice)', price: 619, qty: 2 }], menu);
+const zp = parseLine('Zinger Burger').expected, sp = parseLine('Zinger Burger (+ Cheese slice)').expected - zp;
+const t3 = buildItems([{ name: 'Zinger Burger (Extra spicy, + Cheese slice)', price: zp + sp, qty: 2 }], menu);
 const ok = (cond, msg) => { n++; if (!cond) { bad++; console.log('FAIL', msg); } };
 ok(t1.flags.length === 1 && t1.items[0].price === 1, 'tampered price is flagged and kept visible');
 ok(t2.flags.length === 1 && t2.subtotal === 1000 && t2.items[0].name === 'Mystery Item', 'unknown item kept and flagged');
 ok(t3.flags.length === 0 && t3.items.length === 2 && t3.items[0].name === 'Zinger' && t3.items[0].note === 'Extra spicy'
-  && t3.items[1].name === 'Cheese Slice' && t3.items[1].price === 70 && t3.items[1].qty === 2 && t3.subtotal === 1238, 'add-on split into its own line');
+  && t3.items[1].name === 'Cheese Slice' && t3.items[1].price === sp && t3.items[1].qty === 2 && t3.subtotal === (zp + sp) * 2, 'add-on split into its own line');
 ok(t3.items.reduce((a, l) => a + l.price * l.qty, 0) === t3.subtotal, 'lines add up to subtotal');
 
 console.log(`${n - bad}/${n} checks passed`);
