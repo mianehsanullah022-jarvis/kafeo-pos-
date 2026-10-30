@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-1908';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-1908';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-1908';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-1936';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-1936';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-1936';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.30-1908';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-1908';
-import { pdfBlob } from './pdf.js?v=2026.10.30-1908';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-1908';
+} from './logic.js?v=2026.10.30-1936';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-1936';
+import { pdfBlob } from './pdf.js?v=2026.10.30-1936';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-1936';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.30-1908')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.30-1936')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1016,7 +1016,7 @@ function renderPayment() {
           <label class="field">Cash received (Rs)<input data-m="received" type="number" min="0" step="10" inputmode="numeric" value="${esc(m.received)}" placeholder="${bill.total}"></label>
           <div class="chips">${cashSuggestions(bill.total).map((v) => `<button type="button" class="chip-lg ${Number(m.received) === v ? 'on' : ''}" data-act="pCash" data-v="${v}">${v === bill.total ? 'Exact' : 'Rs ' + num(v)}</button>`).join('')}</div>
           <div class="change" id="change">${changeHtml(bill)}</div>` : `<div class="muted">Confirm the ${esc(m.method)} payment of <b>${fmt(bill.total)}</b> has gone through before completing.</div>`}
-        <label class="check"><input type="checkbox" data-mc="print" ${m.print ? 'checked' : ''}> Print receipt</label>
+        <label class="check"><input type="checkbox" data-mc="print" ${m.print ? 'checked' : ''}> Print receipt after payment</label>
       </div>
       <aside class="disc-right">
         <div class="lbl">Bill</div>
@@ -1033,8 +1033,19 @@ function renderPayment() {
       </aside>
     </div>
     <footer class="mf"><span class="grow"></span>
+      <button type="button" class="btn btn-lg" data-act="pPrintBill">${icon('print', 18)} Print bill</button>
       <button type="button" class="btn btn-lg" data-act="closeModal">Cancel</button>
       <button type="button" class="btn btn-primary btn-lg" data-act="pComplete" id="p-go">${m.method === PAY_LATER ? 'Save as Pay later' : 'Complete payment'} · ${fmt(bill.total)}</button></footer>`);
+}
+// Print the bill from the payment pop-up (before payment), at the amounts shown for the chosen method.
+async function printPayBill() {
+  const m = S.m; if (!m || m.kind !== 'pay') return;
+  const bill = payBill(), pm = billMethod(m.method);
+  const base = m.target ? { ...m.target } : { ...orderFromState(pm, false), id: null, created_at: new Date().toISOString() };
+  const o = { ...base, paid: false, status: base.status === 'cancelled' ? 'new' : base.status, payment: pm,
+    subtotal: bill.subtotal, discount: bill.discount, service_charge: bill.service, tax: bill.tax, tax_rate: bill.taxRate,
+    delivery_fee: bill.fee, round_off: bill.roundOff, total: bill.total };
+  await printReceipt(o);
 }
 function changeHtml(bill) {
   const r = Number(S.m.received);
@@ -2758,7 +2769,7 @@ function openAccount() {
 // =====================================================================
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
 const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
-const invoiceNo = (o) => 'KF-' + String(o.id).padStart(6, '0');
+const invoiceNo = (o) => o.id ? 'KF-' + String(o.id).padStart(6, '0') : 'New order';
 const typeText = (o) => o.type === 'dine' ? `Dine-in · ${esc(dineWhere(o))}` : o.type === 'take' ? 'Takeaway' : 'Delivery';
 const whereText = (o) => o.type === 'dine' ? esc(dineWhere(o).toUpperCase()) : o.type === 'take' ? 'TAKEAWAY' : 'DELIVERY';
 
@@ -3128,6 +3139,7 @@ const ACT = {
     closeModal(); await refreshOrders(); renderScreen();
     toast(from ? `Order #${id} moved from ${from} to ${d.v}` : `Order #${id} is now at ${d.v}`);
   }),
+  pPrintBill: () => run(() => printPayBill()),
   payOpen: (d) => { const o = findOrder(Number(d.id)); if (o) openPayment(o); },
   editOpen: (d) => {
     const o = findOrder(Number(d.id)); if (!o) return;
