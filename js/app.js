@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-1936';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-1936';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-1936';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-2052';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-2052';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-2052';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.30-1936';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-1936';
-import { pdfBlob } from './pdf.js?v=2026.10.30-1936';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-1936';
+} from './logic.js?v=2026.10.30-2052';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-2052';
+import { pdfBlob } from './pdf.js?v=2026.10.30-2052';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-2052';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.30-1936')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.30-2052')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -525,14 +525,8 @@ function visibleItems() {
 }
 // Where a dine-in order sits: its table, a customer name instead of a table, or both. Not escaped.
 const dineWhere = (o) => o.table_no ? `Table ${o.table_no}${o.customer_name ? ' · ' + o.customer_name : ''}` : (o.customer_name || 'Dine-in');
-// Tables grouped by area (Hall, Outdoor…). Busy tables that are no longer in the plan show under "Other".
+// Tables grouped by area (Hall, Outdoor…). Only the tables in Settings are shown — no "Other" group.
 const tableAreas = () => (S.settings.table_areas?.length ? S.settings.table_areas : [{ name: 'Tables', tables: S.settings.tables || [] }]);
-const allTables = () => tableAreas().flatMap((a) => a.tables);
-function areasWithOthers(busyNames) {
-  const known = new Set(allTables());
-  const extra = [...new Set(busyNames)].filter((t) => t && !known.has(t));
-  return extra.length ? [...tableAreas(), { name: 'Other', tables: extra }] : tableAreas();
-}
 // "Hall: H1-H14" lines <-> areas
 const expandTables = (txt) => csvList(txt).flatMap((t) => {
   const m = t.match(/^([A-Za-z]*)(\d+)\s*-\s*\1?(\d+)$/);
@@ -820,7 +814,7 @@ function renderDetails() {
           : `<div class="muted small">${isOwner() ? 'No names yet — add your waiters in <b>Settings → Order takers</b>.' : 'No names yet — ask the owner to add them in Settings.'}</div>`}
       </div>
       ${S.type === 'dine' ? `<label class="field">Name <span class="muted small">· use instead of a table, or together with one</span><input data-mf="dname" data-bind="custName" value="${esc(S.custName)}" placeholder="e.g. Ali" autocomplete="off"></label>` : ''}
-      ${S.type === 'dine' ? `<div class="stack" style="gap:10px">${areasWithOthers([...busyTables.keys()]).map((a, ai) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid" role="group" aria-label="${esc(a.name)} tables">${a.tables.map((t, ti) => {
+      ${S.type === 'dine' ? `<div class="stack" style="gap:10px">${tableAreas().map((a, ai) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid" role="group" aria-label="${esc(a.name)} tables">${a.tables.map((t, ti) => {
         const busy = busyTables.get(t);
         return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${ai === 0 && ti === 0 ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
       }).join('')}</div></div>`).join('')}<div class="muted small">Pick a table, or just write a name above. Tap a picked table again to remove it. Tables with a number already have an open bill.</div></div>` : ''}
@@ -1152,7 +1146,7 @@ function renderOrders(el) {
     <section class="panel">
       <div class="row" style="margin-bottom:12px"><h2 style="margin:0">Tables</h2><span class="grow"></span>
         <span class="legend"><i class="free"></i>Free</span><span class="legend"><i class="busy"></i>Has a bill</span></div>
-      ${areasWithOthers([...byTable.keys()]).map((a) => {
+      ${tableAreas().map((a) => {
         const busyN = a.tables.filter((t) => byTable.has(t)).length;
         return `<div class="area-head"><b>${esc(a.name)}</b><span class="muted small">${busyN} busy · ${a.tables.length - busyN} free</span></div>
       <div class="tables-map">${a.tables.map((t) => {
