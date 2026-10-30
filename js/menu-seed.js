@@ -184,7 +184,7 @@ export const DEFAULT_SETTINGS = {
   // KAFEO floor plan: 14 tables in the hall + 4 outdoor tables on the ground floor
   table_areas: [
     { name: 'Hall', tables: ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10', 'H11', 'H12', 'H13', 'H14'] },
-    { name: 'Outdoor (ground floor)', tables: ['O1', 'O2', 'O3', 'O4'] }
+    { name: 'Outdoor (ground floor)', tables: ['G1', 'G2', 'G3', 'G4'] }
   ],
   // Buy More Save More: spend threshold → free item name (added at Rs 0)
   bmsm: [
