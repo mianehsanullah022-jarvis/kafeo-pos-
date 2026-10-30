@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.29-2240';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.29-2240';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.29-2240';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-1908';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-1908';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-1908';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.29-2240';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.29-2240';
-import { pdfBlob } from './pdf.js?v=2026.10.29-2240';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.29-2240';
+} from './logic.js?v=2026.10.30-1908';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-1908';
+import { pdfBlob } from './pdf.js?v=2026.10.30-1908';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-1908';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.29-2240')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.10.30-1908')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -523,6 +523,8 @@ function visibleItems() {
   if (q) return S.menu.items.filter((i) => i.active && (i.name.toLowerCase().includes(q) || (i.note || '').toLowerCase().includes(q)));
   return itemsIn(S.cat);
 }
+// Where a dine-in order sits: its table, a customer name instead of a table, or both. Not escaped.
+const dineWhere = (o) => o.table_no ? `Table ${o.table_no}${o.customer_name ? ' · ' + o.customer_name : ''}` : (o.customer_name || 'Dine-in');
 // Tables grouped by area (Hall, Outdoor…). Busy tables that are no longer in the plan show under "Other".
 const tableAreas = () => (S.settings.table_areas?.length ? S.settings.table_areas : [{ name: 'Tables', tables: S.settings.tables || [] }]);
 const allTables = () => tableAreas().flatMap((a) => a.tables);
@@ -638,7 +640,7 @@ function renderSummary() {
       <div class="seg" role="group" aria-label="Order type">${types.map(([v, l]) =>
         `<button type="button" class="${S.type === v ? 'on' : ''}" aria-pressed="${S.type === v}" data-act="type" data-v="${v}">${l}</button>`).join('')}</div>
       <div class="chips-row">
-        ${S.type === 'dine' ? `<button type="button" class="chip ${S.table ? 'set' : 'need'}" data-act="details" data-focus="table">${icon('table', 16)}<span>${S.table ? 'Table ' + esc(S.table) : 'Pick table *'}</span></button>` : ''}
+        ${S.type === 'dine' ? `<button type="button" class="chip ${S.table || S.custName.trim() ? 'set' : 'need'}" data-act="details" data-focus="table">${icon('table', 16)}<span>${S.table ? 'Table ' + esc(S.table) : S.custName.trim() ? esc(S.custName.trim()) : 'Table or name *'}</span></button>` : ''}
         ${takers().length ? `<button type="button" class="chip ${S.taker ? 'set' : S.type === 'dine' ? 'need' : ''}" data-act="details" data-focus="taker">${icon('user', 16)}<span>${S.taker ? esc(S.taker) : S.type === 'dine' ? 'Order taker *' : 'Order taker'}</span></button>` : ''}
         <button type="button" class="chip ${phoneOk(p) || S.custName ? 'set' : S.type === 'deliv' ? 'need' : ''}" data-act="details" data-focus="phone">${custChip}</button>
         <button type="button" class="chip ${S.notes ? 'set' : ''}" data-act="details" data-focus="notes">${icon('note', 16)}<span>${S.notes ? 'Note ✓' : 'Note'}</span></button>
@@ -702,7 +704,7 @@ function addToCart(itemId, optIdx) {
 function validateOrder() {
   const p = cleanPhone(S.phone);
   if (!S.cart.length) return 'Add items first';
-  if (S.type === 'dine' && !S.table) return 'Pick a table';
+  if (S.type === 'dine' && !S.table && !S.custName.trim()) return 'Pick a table or write a name';
   if (S.type === 'dine' && takers().length && !S.taker) return 'Pick the order taker';
   if (S.phone && !phoneOk(p)) return 'Phone should be 11 digits, like 03001234567';
   if (S.type === 'deliv' && !phoneOk(p)) return 'Delivery needs the customer’s phone';
@@ -809,7 +811,7 @@ function openDetails(focus = 'phone') {
   setTimeout(() => { const f = $(`#dlg [data-mf="${focus}"]`); f?.focus?.(); }, 30);
 }
 function renderDetails() {
-  const busyTables = new Map(S.open.filter((o) => o.type === 'dine' && o.status !== 'cancelled' && o.status !== 'pending' && !isPayLater(o) && (!o.paid || o.status !== 'done') && (!S.editing || o.id !== S.editing.id)).map((o) => [o.table_no, o.id]));
+  const busyTables = new Map(S.open.filter((o) => o.type === 'dine' && o.status !== 'cancelled' && o.status !== 'pending' && !isPayLater(o) && (!o.paid || o.status !== 'done') && (!S.editing || o.id !== S.editing.id)).filter((o) => o.table_no).map((o) => [o.table_no, o.id]));
   openModal('md', `
     ${modalHead('Order details', TYPE_LABEL[S.type])}
     <div class="mb stack">
@@ -817,13 +819,14 @@ function renderDetails() {
         ${takers().length ? `<div class="chips" role="group" aria-label="Order taker">${takers().map((t, i) => `<button type="button" class="chip-sm ${S.taker === t ? 'on' : ''}" aria-pressed="${S.taker === t}" data-act="pickTaker" data-v="${esc(t)}" data-mf="${i === 0 ? 'taker' : ''}">${esc(t)}</button>`).join('')}</div>`
           : `<div class="muted small">${isOwner() ? 'No names yet — add your waiters in <b>Settings → Order takers</b>.' : 'No names yet — ask the owner to add them in Settings.'}</div>`}
       </div>
+      ${S.type === 'dine' ? `<label class="field">Name <span class="muted small">· use instead of a table, or together with one</span><input data-mf="dname" data-bind="custName" value="${esc(S.custName)}" placeholder="e.g. Ali" autocomplete="off"></label>` : ''}
       ${S.type === 'dine' ? `<div class="stack" style="gap:10px">${areasWithOthers([...busyTables.keys()]).map((a, ai) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid" role="group" aria-label="${esc(a.name)} tables">${a.tables.map((t, ti) => {
         const busy = busyTables.get(t);
         return `<button type="button" class="${S.table === t ? 'on' : ''} ${busy ? 'busy' : ''}" aria-pressed="${S.table === t}" data-act="pickTable" data-v="${esc(t)}" data-mf="${ai === 0 && ti === 0 ? 'table' : ''}">${esc(t)}${busy ? `<small>#${busy}</small>` : ''}</button>`;
-      }).join('')}</div></div>`).join('')}<div class="muted small">Tables with a number already have an open bill.</div></div>` : ''}
+      }).join('')}</div></div>`).join('')}<div class="muted small">Pick a table, or just write a name above. Tap a picked table again to remove it. Tables with a number already have an open bill.</div></div>` : ''}
       <label class="field">Customer phone ${S.type === 'deliv' ? '*' : '(for loyalty)'}<input data-mf="phone" data-bind="phone" type="tel" inputmode="tel" placeholder="03xx xxxxxxx" value="${esc(S.phone)}" autocomplete="off"></label>
       <div id="guest">${guestHtml()}</div>
-      <label class="field">Customer name<input data-mf="name" data-bind="custName" value="${esc(S.custName)}" autocomplete="off"></label>
+      ${S.type === 'dine' ? '' : `<label class="field">Customer name<input data-mf="name" data-bind="custName" value="${esc(S.custName)}" autocomplete="off"></label>`}
       ${S.type === 'deliv' ? `<label class="field">Delivery address *<input data-mf="address" data-bind="address" value="${esc(S.address)}" placeholder="House, street, area" autocomplete="off"></label>
         <label class="field">Delivery fee (Rs)<input data-mf="fee" data-bind="feeOverride" type="number" min="0" step="10" value="${deliveryFee()}"></label>` : ''}
       <label class="field">Order note for kitchen<input data-mf="notes" data-bind="notes" value="${esc(S.notes)}" placeholder="e.g. birthday — bring candle with dessert" autocomplete="off"></label>
@@ -999,7 +1002,7 @@ function renderPayment() {
   const bill = payBill();
   const t = m.target;
   openModal('lg', `
-    ${modalHead(t ? `Take payment · Order #${t.id}` : 'Take payment', t ? (t.type === 'dine' ? 'Table ' + esc(t.table_no) : TYPE_LABEL[t.type]) : (S.type === 'dine' ? 'Table ' + esc(S.table) : TYPE_LABEL[S.type]))}
+    ${modalHead(t ? `Take payment · Order #${t.id}` : 'Take payment', t ? (t.type === 'dine' ? esc(dineWhere(t)) : TYPE_LABEL[t.type]) : (S.type === 'dine' ? esc(dineWhere({ table_no: S.table, customer_name: S.custName.trim() })) : TYPE_LABEL[S.type]))}
     <div class="mb pay">
       <div class="stack">
         <div class="lbl">Payment method</div>
@@ -1088,7 +1091,7 @@ async function completePayment() {
 // =====================================================================
 // ORDERS — running bills (pay after food) + paid today
 // =====================================================================
-const whereOf = (o) => o.type === 'dine' ? `Table ${esc(o.table_no)}` : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + esc(o.customer_name) : ''}`;
+const whereOf = (o) => o.type === 'dine' ? esc(dineWhere(o)) : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + esc(o.customer_name) : ''}`;
 function renderOrders(el) {
   el.className = 'screen';
   const bills = unpaidBills();
@@ -1098,7 +1101,7 @@ function renderOrders(el) {
   const shown = bills.filter((o) => f === 'all' || o.type === f);
   const due = bills.reduce((a, o) => a + Number(o.total), 0);
   const byTable = new Map();
-  bills.filter((o) => o.type === 'dine').forEach((o) => { const t = byTable.get(o.table_no) || []; t.push(o); byTable.set(o.table_no, t); });
+  bills.filter((o) => o.type === 'dine' && o.table_no).forEach((o) => { const t = byTable.get(o.table_no) || []; t.push(o); byTable.set(o.table_no, t); });
   const counts = { all: bills.length, dine: 0, take: 0, deliv: 0 };
   bills.forEach((o) => { counts[o.type]++; });
   const kitchenTag = (o) => {
@@ -1125,7 +1128,7 @@ function renderOrders(el) {
     <div class="bills-grid">${later.map((o) => { const pl = o.meta?.pay_later || {}; const days = Math.floor((Date.now() - new Date(o.created_at)) / 864e5); return `
       <article class="bill" id="bill-${o.id}">
         <div class="row"><b class="bill-where">${esc(o.customer_name || o.customer_phone || 'Customer')}</b><span class="grow"></span><span class="tag ${days >= 7 ? 'warn' : ''}">${days ? days + (days === 1 ? ' day' : ' days') : 'Today'}</span></div>
-        <div class="row wrap muted small"><span>Order #${o.id}</span><span>·</span><span>${o.type === 'dine' ? 'Table ' + esc(o.table_no) : TYPE_LABEL[o.type]}</span><span>·</span><span>${esc(fmtDate(o.created_at))} ${fmtTime(o.created_at)}</span>${pl.by ? `<span>·</span><span>by ${esc(pl.by)}</span>` : ''}${o.customer_phone ? `<span>·</span><span>${esc(o.customer_phone)}</span>` : ''}</div>
+        <div class="row wrap muted small"><span>Order #${o.id}</span><span>·</span><span>${o.type === 'dine' ? esc(dineWhere(o)) : TYPE_LABEL[o.type]}</span><span>·</span><span>${esc(fmtDate(o.created_at))} ${fmtTime(o.created_at)}</span>${pl.by ? `<span>·</span><span>by ${esc(pl.by)}</span>` : ''}${o.customer_phone ? `<span>·</span><span>${esc(o.customer_phone)}</span>` : ''}</div>
         <ul class="bill-items">${o.items.map((l) => `<li><span>${l.qty}× ${esc(l.name)}</span><span>${num(l.price * l.qty)}</span></li>`).join('')}</ul>
         <div class="bill-total"><span>To collect</span><b>${fmt(o.total)}</b></div>
         <div class="bill-actions">
@@ -1161,7 +1164,7 @@ function renderOrders(el) {
         <div class="bill-actions">
           <button type="button" class="btn btn-primary btn-lg" data-act="payOpen" data-id="${o.id}">Take payment</button>
           <button type="button" class="btn" data-act="editOpen" data-id="${o.id}">${icon('edit', 18)} Add items</button>
-          ${o.type === 'dine' ? `<button type="button" class="btn" data-act="moveTable" data-id="${o.id}">${icon('table', 18)} Move table</button>` : ''}
+          ${o.type === 'dine' ? `<button type="button" class="btn" data-act="moveTable" data-id="${o.id}">${icon('table', 18)} ${o.table_no ? 'Move table' : 'Give table'}</button>` : ''}
           <button type="button" class="btn" data-act="print" data-id="${o.id}">${icon('print', 18)} Print bill</button>
           <button type="button" class="btn" data-act="printKot" data-id="${o.id}" aria-label="Reprint kitchen ticket for order ${o.id}">KOT</button>
           ${isOwner() ? `<button type="button" class="btn btn-danger" data-act="cancelOrder" data-id="${o.id}" aria-label="Cancel order ${o.id}">${icon('x', 18)}</button>` : ''}
@@ -2362,7 +2365,7 @@ function renderKitchen(el) {
 function ticketK(o, items) {
   const age = minutesSince(o.created_at);
   const late = age >= lateMin() && o.status !== 'ready';
-  const where = o.type === 'dine' ? `Table ${esc(o.table_no)}` : o.type === 'take' ? `Takeaway${o.customer_name ? ' · ' + esc(o.customer_name) : ''}` : 'Delivery';
+  const where = o.type === 'dine' ? esc(dineWhere(o)) : o.type === 'take' ? `Takeaway${o.customer_name ? ' · ' + esc(o.customer_name) : ''}` : 'Delivery';
   let btn;
   if (o.status === 'new') btn = `<button type="button" class="btn kbtn-start" data-act="kstatus" data-id="${o.id}" data-v="preparing">Start preparing</button>`;
   else if (o.status === 'preparing') btn = `<button type="button" class="btn kbtn-ready" data-act="kstatus" data-id="${o.id}" data-v="ready">Mark ready</button>`;
@@ -2504,7 +2507,7 @@ function renderReportsDash(el) {
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Time</th><th>Type</th><th>Items</th><th>Discount</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>
       ${S.rep.orders.slice(0, 150).map((o) => `<tr>
         <td>#${o.id}</td><td>${new Date(o.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}</td>
-        <td>${TYPE_LABEL[o.type]}${o.table_no ? ' · ' + esc(o.table_no) : ''}</td>
+        <td>${TYPE_LABEL[o.type]}${o.type === 'dine' ? ' · ' + esc(dineWhere(o)) : o.table_no ? ' · ' + esc(o.table_no) : ''}</td>
         <td class="small">${o.items.map((l) => `${l.qty}× ${esc(l.name)}`).join(', ')}</td>
         <td class="small">${Number(o.discount) ? `${fmt(o.discount)}<br><span class="muted">${esc(o.discount_label)}</span>` : '—'}</td>
         <td>${o.status === 'cancelled' ? '<span class="tag warn">Cancelled</span>' : o.paid ? esc(o.payment) : '<span class="tag">Unpaid</span>'}</td>
@@ -2756,8 +2759,8 @@ function openAccount() {
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
 const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
 const invoiceNo = (o) => 'KF-' + String(o.id).padStart(6, '0');
-const typeText = (o) => o.type === 'dine' ? `Dine-in · ${esc(o.table_no)}` : o.type === 'take' ? 'Takeaway' : 'Delivery';
-const whereText = (o) => o.type === 'dine' ? `TABLE ${esc(o.table_no)}` : o.type === 'take' ? 'TAKEAWAY' : 'DELIVERY';
+const typeText = (o) => o.type === 'dine' ? `Dine-in · ${esc(dineWhere(o))}` : o.type === 'take' ? 'Takeaway' : 'Delivery';
+const whereText = (o) => o.type === 'dine' ? esc(dineWhere(o).toUpperCase()) : o.type === 'take' ? 'TAKEAWAY' : 'DELIVERY';
 
 // KAFEO wordmark with the coffee-cup "O" (prints crisp at any size).
 const LOGO_SVG = `<svg class="logo" viewBox="0 0 260 64" xmlns="http://www.w3.org/2000/svg" aria-label="KAFEO">
@@ -3042,7 +3045,7 @@ const ACT = {
   },
   type: (d) => { S.type = d.v; renderSummary(); },
   details: (d) => openDetails(d.focus),
-  pickTable: (d) => { S.table = d.v; renderDetails(); },
+  pickTable: (d) => { S.table = S.table === d.v ? '' : d.v; renderDetails(); },
   pickTaker: (d) => { S.taker = S.taker === d.v ? '' : d.v; renderDetails(); renderSummary(); },
   toggleService: () => { S.serviceOn = !S.serviceOn; renderSummary(); },
   clearCart: () => {
@@ -3110,9 +3113,9 @@ const ACT = {
   },
   moveTable: (d) => {
     const o = findOrder(Number(d.id)); if (!o) return;
-    const busy = new Map(unpaidBills().filter((x) => x.type === 'dine' && x.id !== o.id).map((x) => [x.table_no, x.id]));
+    const busy = new Map(unpaidBills().filter((x) => x.type === 'dine' && x.table_no && x.id !== o.id).map((x) => [x.table_no, x.id]));
     S.m = { kind: 'moveTable', id: o.id };
-    openModal('md', `${modalHead(`Move order #${o.id}`, `Now at table ${esc(o.table_no)} · pick the new table`)}
+    openModal('md', `${modalHead(`Move order #${o.id}`, o.table_no ? `Now at table ${esc(o.table_no)} · pick the new table` : `${esc(o.customer_name || 'No table yet')} · pick a table`)}
       <div class="mb stack" style="gap:10px">${tableAreas().map((a) => `<div><div class="lbl">${esc(a.name)}</div><div class="table-grid">${a.tables.map((t) =>
         `<button type="button" class="${t === o.table_no ? 'on' : ''} ${busy.has(t) ? 'busy' : ''}" data-act="moveTo" data-v="${esc(t)}" ${t === o.table_no ? 'disabled' : ''}>${esc(t)}${busy.has(t) ? `<small>#${busy.get(t)}</small>` : ''}</button>`).join('')}</div></div>`).join('')}
         <div class="muted small">A table with a number already has a bill — moving there keeps both bills separate.</div></div>
@@ -3123,7 +3126,7 @@ const ACT = {
     const from = o.table_no;
     await api.updateOrder(id, { table_no: d.v });
     closeModal(); await refreshOrders(); renderScreen();
-    toast(`Order #${id} moved from ${from} to ${d.v}`);
+    toast(from ? `Order #${id} moved from ${from} to ${d.v}` : `Order #${id} is now at ${d.v}`);
   }),
   payOpen: (d) => { const o = findOrder(Number(d.id)); if (o) openPayment(o); },
   editOpen: (d) => {

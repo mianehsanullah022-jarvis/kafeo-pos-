@@ -1,6 +1,6 @@
 // KAFEO Reports Center — every report is built as plain data (title, key figures, tables),
 // then shown on screen, saved as PDF, printed on A4 or thermal, or exported to Excel (CSV).
-import { lineDiscount } from './logic.js?v=2026.10.29-2240';
+import { lineDiscount } from './logic.js?v=2026.10.30-1908';
 
 const n0 = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const rs = (n) => 'Rs ' + n0(n);
@@ -10,7 +10,7 @@ export const dt = (d) => new Date(d).toLocaleString('en-US', { month: 'short', d
 const tm = (d) => new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 const TYPE = { dine: 'Dine-in', take: 'Takeaway', deliv: 'Delivery' };
 const inv = (o) => 'KF-' + String(o.id).padStart(6, '0');
-const where = (o) => o.type === 'dine' ? `Dine-in ${o.table_no}` : TYPE[o.type];
+const where = (o) => o.type === 'dine' ? `Dine-in ${o.table_no || o.customer_name || ''}`.trim() : TYPE[o.type];
 const by = (o) => o.meta?.by || '-';
 const isPaid = (o) => o.paid && o.status !== 'cancelled';
 const optOf = (l) => l.opt ?? (l.name.match(/\(([^)]+)\)$/)?.[1] || '');
