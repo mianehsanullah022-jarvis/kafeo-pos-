@@ -171,7 +171,7 @@ export const DEFAULT_SETTINGS = {
   receipt_footer: 'Thank you for visiting KAFEO — see you again!',
   receipt_loyalty: true,         // show the customer's stamps on the receipt
   day_start_hour: 6,             // business day runs 6 AM to 6 AM (late-night sales count for the same day)
-  expense_types: ['Supplies', 'Groceries', 'Utilities', 'Salary / advance', 'Rent', 'Maintenance', 'Transport / fuel', 'Marketing', 'Other'],
+  expense_types: ['Supplies', 'Groceries', 'Utilities', 'Salary / advance', 'Rent', 'Maintenance', 'Transport / fuel', 'Marketing', 'Ehsanullah personal', 'Incentives', 'Other'],
   // suggestions for "Paid to" on the Expenses screen (KAFEO Vendor List)
   expense_vendors: ['Abbas LPG Gas', 'Accha Cheez', 'BBQ Vendor', 'Chicken', 'Chicken Tvental Market', 'Coke', 'Dawn', 'Dessert', 'Fresh Pota Fries',
     'Hico Ice Cream', 'Horeca Solution', 'Jalal Sons', "K&N's", 'Packing Vendor', 'Pasta Cream Vendor', 'Prema Milk', 'Printing Vendor',
