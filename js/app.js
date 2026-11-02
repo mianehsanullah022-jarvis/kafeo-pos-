@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.10.30-2052';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.10.30-2052';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.10.30-2052';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.02-1753';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.02-1753';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.02-1753';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.10.30-2052';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.10.30-2052';
-import { pdfBlob } from './pdf.js?v=2026.10.30-2052';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.10.30-2052';
+} from './logic.js?v=2026.11.02-1753';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.02-1753';
+import { pdfBlob } from './pdf.js?v=2026.11.02-1753';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.02-1753';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.10.30-2052')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.11.02-1753')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1192,6 +1192,47 @@ function renderOrders(el) {
 const DASH_RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days'], ['month', 'This month'], ['last90', 'Last 3 months'], ['custom', 'Custom']];
 const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const DAY = 864e5;
+// Month + day picker made only of buttons (no time, no phone date pop-up), so the live refresh can't close it.
+// st keeps: py = year on show, pm = 'YYYY-MM' picked month, pd = 'YYYY-MM-DD' picked day ('' = whole month).
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const daysInMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+function monthDayPicker(st, t) {
+  const today = ymdLocal(businessDayStart());
+  const ty = Number(today.slice(0, 4)), tm = today.slice(0, 7);
+  const y = st.py || Number((st.pm || tm).slice(0, 4));
+  const btn = (cls, attrs, label, off) => `<button type="button" class="${cls}" data-t="${t}" ${attrs} ${off ? 'disabled' : ''}>${label}</button>`;
+  let days = '';
+  if (st.pm) {
+    const n = daysInMonth(st.pm);
+    const first = new Date(Number(st.pm.slice(0, 4)), Number(st.pm.slice(5, 7)) - 1, 1).getDay();   // 0 = Sunday
+    const cells = [];
+    for (let i = 0; i < (first + 6) % 7; i++) cells.push('<span></span>');   // weeks start on Monday
+    for (let dd = 1; dd <= n; dd++) {
+      const v = `${st.pm}-${pad2(dd)}`;
+      cells.push(btn(`md-day ${st.pd === v ? 'on' : ''} ${v === today ? 'today' : ''}`, `data-act="mdDay" data-v="${v}" aria-pressed="${st.pd === v}"`, dd, v > today));
+    }
+    const mName = `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][Number(st.pm.slice(5, 7)) - 1]} ${st.pm.slice(0, 4)}`;
+    days = `<div class="md-days-head">${btn(`chip-sm ${st.pd ? '' : 'on'}`, `data-act="mdMonth" data-v="${st.pm}"`, `Whole ${esc(mName)}`)}<span class="muted small">or tap one day to see only that day's sale</span></div>
+      <div class="md-week">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((w) => `<span>${w}</span>`).join('')}</div>
+      <div class="md-days">${cells.join('')}</div>`;
+  }
+  return `<div class="md-pick">
+    <div class="md-year">${btn('icon-btn md-nav', 'data-act="mdYear" data-v="-1" aria-label="Previous year"', '‹')}<b>${y}</b>${btn('icon-btn md-nav', 'data-act="mdYear" data-v="1" aria-label="Next year"', '›', y >= ty)}</div>
+    <div class="md-months">${MONTHS_SHORT.map((m, i) => { const v = `${y}-${pad2(i + 1)}`; return btn(`chip-sm ${st.pm === v ? 'on' : ''}`, `data-act="mdMonth" data-v="${v}" aria-pressed="${st.pm === v}"`, m, v > tm); }).join('')}</div>
+    ${days}
+  </div>`;
+}
+// Apply a picked month / day to the Dashboard ('dash') or the Reports centre ('rc').
+function mdApply(t, from, to) {
+  const today = ymdLocal(businessDayStart());
+  if (to > today) to = today;
+  if (t === 'dash') { Object.assign(S.dash, { range: 'custom', cfrom: from, cto: to, dfrom: '', dto: '', loaded: false }); renderScreen(); return; }
+  const h = Number(S.settings.day_start_hour ?? 6);
+  const at = (ymd, plus) => { const [y, m, dd] = ymd.split('-').map(Number); return new Date(y, m - 1, dd + plus, h); };
+  Object.assign(S.rc, { preset: 'custom', from: toLocalInput(at(from, 0)), to: toLocalInput(at(to, 1)), result: null });
+  run(async () => { await rcLoad(); });
+}
+const mdState = (t) => (t === 'dash' ? S.dash : S.rc);
 function dashRanges(range) {
   const day = businessDayStart();
   const now = new Date();
@@ -1388,8 +1429,10 @@ function renderDashboard(el) {
     <div class="seg dash-range" role="group" aria-label="Period">${DASH_RANGES.map(([v, l]) =>
       `<button type="button" class="${d.range === v ? 'on' : ''}" aria-pressed="${d.range === v}" data-act="dashRange" data-v="${v}">${l}</button>`).join('')}</div>
     ${d.range === 'custom' ? `<form class="dash-custom" data-submit="dashCustom">
-      <label class="field">From<input type="date" name="from" value="${esc(d.cfrom)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
-      <label class="field">To<input type="date" name="to" value="${esc(d.cto)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
+      ${monthDayPicker(d, 'dash')}
+      <div class="md-or muted small">Or choose your own dates:</div>
+      <label class="field">From<input type="date" name="from" data-dc="from" value="${esc(d.dfrom || d.cfrom)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
+      <label class="field">To<input type="date" name="to" data-dc="to" value="${esc(d.dto || d.cto)}" max="${esc(ymdLocal(businessDayStart()))}" required></label>
       <div class="dash-quick">${[['Last 3 months', 89], ['Last 6 months', 182], ['This year', 'year'], ['Last 12 months', 364]].map(([l, n]) =>
         `<button type="button" class="pill" data-act="dashQuick" data-n="${n}">${l}</button>`).join('')}</div>
       <button type="submit" class="btn btn-primary">Show</button>
@@ -1577,11 +1620,17 @@ async function refreshDash() {
   } catch (e) { console.warn('Dashboard refresh failed:', e.message); }
   finally { d.loading = false; $('#screen')?.classList.remove('refreshing'); }
   if (S.route !== 'dashboard') return;
-  if (S.m) d.needsRender = true;   // a pop-up is open — redraw as soon as it closes
+  if (S.m || dashEditing()) d.needsRender = true;   // a pop-up is open or a date is being picked — redraw afterwards
   else renderScreen();
 }
+// True while a date box on the Dashboard is being used — redrawing then would close the calendar.
+const dashEditing = () => !!document.activeElement?.closest?.('.dash-custom');
+document.addEventListener('focusout', (e) => {
+  if (!e.target.closest?.('.dash-custom')) return;
+  setTimeout(() => { if (S.route === 'dashboard' && S.dash.needsRender && !S.m && !dashEditing()) { S.dash.needsRender = false; renderScreen(); } }, 400);
+});
 // Redraw from data already on screen (menu names, stock levels) — waits if a pop-up is open.
-function dashRedraw() { if (S.route !== 'dashboard' || !S.dash.loaded) return; if (S.m) S.dash.needsRender = true; else renderScreen(); }
+function dashRedraw() { if (S.route !== 'dashboard' || !S.dash.loaded) return; if (S.m || dashEditing()) S.dash.needsRender = true; else renderScreen(); }
 // Safety net: re-check everything every 20 seconds while the dashboard is on screen (in case the live connection drops).
 setInterval(() => {
   if (!S.me?.profile || S.route !== 'dashboard' || document.hidden) return;
@@ -1619,8 +1668,15 @@ function rcInit() {
 const rcRangeText = () => {
   const def = REPORTS[S.rc.id];
   if (def.noDates) return 'As of ' + rdt(new Date());
-  return `${rdt(new Date(S.rc.from))}  -  ${rdt(new Date(S.rc.to))}`;
+  const f = rcDateVal('from'), t = rcDateVal('to');
+  const nice = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
+  return f === t ? nice(f) : `${nice(f)}  -  ${nice(t)}`;
 };
+// The business date (no time) a report starts / ends on. The end is stored as the next morning's day-start.
+function rcDateVal(k) {
+  const d = new Date(S.rc[k]);
+  return ymdLocal(k === 'to' ? businessDayStart(new Date(d.getTime() - 1)) : businessDayStart(d));
+}
 async function rcLoad() {
   const rc = S.rc, def = REPORTS[rc.id];
   // "Today", "This week"… are recalculated each time, so they roll over at the business-day start.
@@ -1682,12 +1738,14 @@ function renderReportsCenter(el) {
         <div class="panel stack">
           <div class="row wrap"><div class="grow"><h2 style="margin:0;font-size:20px">${esc(def.title)}</h2><div class="muted small">${esc(def.desc)}</div></div></div>
           ${def.noDates ? '' : `
-          <div class="chips">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last7', 'Last 7 days'], ['month', 'This month'], ['lastMonth', 'Last month']].map(([v, l]) =>
+          <div class="chips">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last7', 'Last 7 days'], ['month', 'This month'], ['lastMonth', 'Last month'], ['custom', 'Custom']].map(([v, l]) =>
             `<button type="button" class="chip-sm ${rc.preset === v ? 'on' : ''}" data-act="rcPreset" data-v="${v}">${l}</button>`).join('')}</div>
+          ${rc.preset === 'custom' ? `${monthDayPicker(rc, 'rc')}
+          <div class="md-or muted small">Or choose your own dates:</div>
           <div class="cols">
-            <label class="field">Start date & time<input type="datetime-local" data-rc="from" value="${esc(rc.from)}"></label>
-            <label class="field">End date & time<input type="datetime-local" data-rc="to" value="${esc(rc.to)}"></label>
-          </div>
+            <label class="field">From date<input type="date" data-rcd="from" value="${esc(rcDateVal('from'))}" max="${esc(ymdLocal(businessDayStart()))}"></label>
+            <label class="field">To date<input type="date" data-rcd="to" value="${esc(rcDateVal('to'))}" max="${esc(ymdLocal(businessDayStart()))}"></label>
+          </div>` : ''}
           <div class="muted small">“Today” runs ${Number(S.settings.day_start_hour ?? 6)}:00 AM to ${Number(S.settings.day_start_hour ?? 6)}:00 AM next day, so late-night sales count in the same day.</div>`}
           ${fl.length ? `<div class="cols">
             ${fl.includes('category') ? `<label class="field">Category<select data-rcf="category"><option value="all">All categories</option>${S.menu.categories.map((c) => `<option value="${esc(c.id)}" ${rc.f.category === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>` : ''}
@@ -3149,8 +3207,11 @@ const ACT = {
     const t = businessDayStart();
     S.dash.cto = ymdLocal(t);
     S.dash.cfrom = d.n === 'year' ? `${t.getFullYear()}-01-01` : ymdLocal(new Date(t.getTime() - Number(d.n) * DAY));
-    S.dash.loaded = false; renderScreen();
+    Object.assign(S.dash, { pm: '', pd: '', dfrom: '', dto: '', loaded: false }); renderScreen();
   },
+  mdYear: (d) => { const st = mdState(d.t); const ty = Number(ymdLocal(businessDayStart()).slice(0, 4)); st.py = Math.min(ty, (st.py || Number((st.pm || String(ty)).slice(0, 4))) + Number(d.v)); renderScreen(); },
+  mdMonth: (d) => { const st = mdState(d.t); st.pm = d.v; st.pd = ''; st.py = Number(d.v.slice(0, 4)); mdApply(d.t, `${d.v}-01`, `${d.v}-${pad2(daysInMonth(d.v))}`); },
+  mdDay: (d) => { const st = mdState(d.t); st.pd = d.v; st.pm = d.v.slice(0, 7); mdApply(d.t, d.v, d.v); },
   notifyOn: () => run(async () => {
     const p = await Notification.requestPermission();
     renderNotifyBar();
@@ -3243,7 +3304,7 @@ const ACT = {
   },
   repTab: (d) => { S.rep.tab = d.v; renderScreen(); },
   rcPick: (d) => { S.rc.id = d.id; S.rc.result = null; renderScreen(); },
-  rcPreset: (d) => { const r = presetRange(d.v); S.rc.preset = d.v; S.rc.from = toLocalInput(r[0]); S.rc.to = toLocalInput(r[1]); S.rc.result = null; renderScreen(); },
+  rcPreset: (d) => { if (d.v === 'custom') { S.rc.preset = 'custom'; renderScreen(); return; } const r = presetRange(d.v); Object.assign(S.rc, { preset: d.v, from: toLocalInput(r[0]), to: toLocalInput(r[1]), pm: '', pd: '', result: null }); renderScreen(); },
   rcView: () => run(rcLoad),
   rcPdf: () => run(async () => {
     const res = await rcEnsure();
@@ -3464,7 +3525,7 @@ const SUBMIT = {
     if (!a || !b) return toast('Pick both dates', { err: true });
     if (a > b) return toast('The “From” date must be before the “To” date', { err: true });
     if ((new Date(b) - new Date(a)) / DAY > 731) return toast('Please pick 2 years or less', { err: true });
-    Object.assign(S.dash, { cfrom: a, cto: b, loaded: false }); renderScreen();
+    Object.assign(S.dash, { cfrom: a, cto: b, dfrom: '', dto: '', pm: '', pd: '', loaded: false }); renderScreen();
   },
   exSave: (form) => run(async () => {
     const x = S.ex, f = x.form, amount = Math.round(Number(f.amount));
@@ -3623,6 +3684,15 @@ document.addEventListener('change', (e) => {
   if (t.dataset.exr && S.ex) { if (t.value) { S.ex[t.dataset.exr] = t.value; S.ex.preset = 'custom'; S.ex.loaded = false; renderScreen(); } return; }
   if (t.dataset.excat !== undefined && S.ex) { S.ex.cat = t.value; renderScreen(); return; }
   if (t.dataset.rc && S.rc) { S.rc[t.dataset.rc] = t.value; S.rc.preset = 'custom'; S.rc.result = null; renderScreen(); return; }
+  if (t.dataset.rcd && S.rc) {
+    if (!t.value) return;
+    const other = rcDateVal(t.dataset.rcd === 'from' ? 'to' : 'from');
+    let a = t.dataset.rcd === 'from' ? t.value : other, b = t.dataset.rcd === 'from' ? other : t.value;
+    if (a > b) [a, b] = [b, a];
+    S.rc.pm = ''; S.rc.pd = '';
+    mdApply('rc', a, b); return;
+  }
+  if (t.dataset.dc) { S.dash['d' + t.dataset.dc] = t.value; return; }
   if (t.dataset.rcf && S.rc) { S.rc.f[t.dataset.rcf] = t.value; S.rc.result = null; renderScreen(); return; }
   if (t.dataset.rf) {
     const rows = recipeRows(t.dataset.key);
