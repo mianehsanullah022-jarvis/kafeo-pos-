@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.02-1753';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.02-1753';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.02-1753';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.02-1849';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.02-1849';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.02-1849';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.11.02-1753';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.02-1753';
-import { pdfBlob } from './pdf.js?v=2026.11.02-1753';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.02-1753';
+} from './logic.js?v=2026.11.02-1849';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.02-1849';
+import { pdfBlob } from './pdf.js?v=2026.11.02-1849';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.02-1849';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.11.02-1753')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.11.02-1849')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1229,10 +1229,26 @@ function mdApply(t, from, to) {
   if (t === 'dash') { Object.assign(S.dash, { range: 'custom', cfrom: from, cto: to, dfrom: '', dto: '', loaded: false }); renderScreen(); return; }
   const h = Number(S.settings.day_start_hour ?? 6);
   const at = (ymd, plus) => { const [y, m, dd] = ymd.split('-').map(Number); return new Date(y, m - 1, dd + plus, h); };
-  Object.assign(S.rc, { preset: 'custom', from: toLocalInput(at(from, 0)), to: toLocalInput(at(to, 1)), result: null });
+  const span = { from: toLocalInput(at(from, 0)), to: toLocalInput(at(to, 1)) };
+  if (t === 'ex') { Object.assign(S.ex, span, { preset: 'custom', loaded: false }); renderScreen(); return; }
+  if (t === 'cl') { Object.assign(S.cl, span, { fromSet: true, toSet: true, loaded: false }); renderScreen(); return; }
+  Object.assign(S.rc, span, { preset: 'custom', result: null });
   run(async () => { await rcLoad(); });
 }
-const mdState = (t) => (t === 'dash' ? S.dash : S.rc);
+const mdState = (t) => ({ dash: S.dash, rc: S.rc, ex: S.ex, cl: S.cl })[t];
+// Business date (no time) of a stored start / end. An end is stored as the next morning's day-start.
+const mdYmd = (str, isEnd) => { const d = new Date(str); return ymdLocal(isEnd ? businessDayStart(new Date(d.getTime() - 1)) : businessDayStart(d)); };
+// "From date" / "To date" boxes (no time) for Reports, Expenses and Shift closing.
+function mdDateBoxes(t, st) {
+  const max = esc(ymdLocal(businessDayStart()));
+  return `<div class="md-or muted small">Or choose your own dates:</div>
+    <div class="cols md-boxes">
+      <label class="field">From date<input type="date" data-mdd="from" data-t="${t}" value="${esc(mdYmd(st.from, false))}" max="${max}"></label>
+      <label class="field">To date<input type="date" data-mdd="to" data-t="${t}" value="${esc(mdYmd(st.to, true))}" max="${max}"></label>
+    </div>`;
+}
+const mdNice = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
+const mdRangeText = (st) => { const f = mdYmd(st.from, false), t = mdYmd(st.to, true); return f === t ? mdNice(f) : `${mdNice(f)}  -  ${mdNice(t)}`; };
 function dashRanges(range) {
   const day = businessDayStart();
   const now = new Date();
@@ -1668,15 +1684,8 @@ function rcInit() {
 const rcRangeText = () => {
   const def = REPORTS[S.rc.id];
   if (def.noDates) return 'As of ' + rdt(new Date());
-  const f = rcDateVal('from'), t = rcDateVal('to');
-  const nice = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
-  return f === t ? nice(f) : `${nice(f)}  -  ${nice(t)}`;
+  return mdRangeText(S.rc);
 };
-// The business date (no time) a report starts / ends on. The end is stored as the next morning's day-start.
-function rcDateVal(k) {
-  const d = new Date(S.rc[k]);
-  return ymdLocal(k === 'to' ? businessDayStart(new Date(d.getTime() - 1)) : businessDayStart(d));
-}
 async function rcLoad() {
   const rc = S.rc, def = REPORTS[rc.id];
   // "Today", "This week"… are recalculated each time, so they roll over at the business-day start.
@@ -1741,11 +1750,7 @@ function renderReportsCenter(el) {
           <div class="chips">${[['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last7', 'Last 7 days'], ['month', 'This month'], ['lastMonth', 'Last month'], ['custom', 'Custom']].map(([v, l]) =>
             `<button type="button" class="chip-sm ${rc.preset === v ? 'on' : ''}" data-act="rcPreset" data-v="${v}">${l}</button>`).join('')}</div>
           ${rc.preset === 'custom' ? `${monthDayPicker(rc, 'rc')}
-          <div class="md-or muted small">Or choose your own dates:</div>
-          <div class="cols">
-            <label class="field">From date<input type="date" data-rcd="from" value="${esc(rcDateVal('from'))}" max="${esc(ymdLocal(businessDayStart()))}"></label>
-            <label class="field">To date<input type="date" data-rcd="to" value="${esc(rcDateVal('to'))}" max="${esc(ymdLocal(businessDayStart()))}"></label>
-          </div>` : ''}
+          ${mdDateBoxes('rc', rc)}` : ''}
           <div class="muted small">“Today” runs ${Number(S.settings.day_start_hour ?? 6)}:00 AM to ${Number(S.settings.day_start_hour ?? 6)}:00 AM next day, so late-night sales count in the same day.</div>`}
           ${fl.length ? `<div class="cols">
             ${fl.includes('category') ? `<label class="field">Category<select data-rcf="category"><option value="all">All categories</option>${S.menu.categories.map((c) => `<option value="${esc(c.id)}" ${rc.f.category === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>` : ''}
@@ -1849,16 +1854,15 @@ function renderExpenses(el) {
   const later = (x.later || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const laterTotal = later.reduce((a, e) => a + Number(e.amount), 0);
   const isLater = f.method === PAY_LATER;
-  const rangeTxt = `${rdt(new Date(x.from))} - ${rdt(new Date(x.to))}`;
+  const rangeTxt = mdRangeText(x);
   el.innerHTML = `
     <div class="screen-head"><h1>Expenses</h1><span class="muted">${esc(rangeTxt)}</span></div>
     ${x.ready ? '' : '<div class="error" style="margin-bottom:12px">Expenses need a one-time database update: run supabase/migrations/005_expenses.sql in Supabase.</div>'}
     <div class="row wrap" style="margin-bottom:14px">
-      ${EX_PRESETS.filter(([v]) => owner || v === 'today' || v === 'yesterday').map(([v, l]) => `<button type="button" class="pill ${x.preset === v ? 'on' : ''}" data-act="exPreset" data-v="${v}">${l}</button>`).join('')}
-      ${owner ? `<label class="field ex-date">From<input type="datetime-local" data-exr="from" value="${esc(x.from)}"></label>
-      <label class="field ex-date">To<input type="datetime-local" data-exr="to" value="${esc(x.to)}"></label>
-      <span class="grow"></span><button type="button" class="btn" data-act="exPdf">${icon('print', 18)} PDF / print</button>` : ''}
+      ${[...EX_PRESETS, ['custom', 'Custom']].filter(([v]) => owner || v === 'today' || v === 'yesterday').map(([v, l]) => `<button type="button" class="pill ${x.preset === v ? 'on' : ''}" data-act="exPreset" data-v="${v}">${l}</button>`).join('')}
+      ${owner ? `<span class="grow"></span><button type="button" class="btn" data-act="exPdf">${icon('print', 18)} PDF / print</button>` : ''}
     </div>
+    ${owner && x.preset === 'custom' ? `<div class="panel md-panel">${monthDayPicker(x, 'ex')}${mdDateBoxes('ex', x)}</div>` : ''}
     <div class="kpis">
       <div class="kpi"><div class="l">Total expenses</div><div class="v">${fmt(total)}</div><div class="s">${list.length} ${list.length === 1 ? 'entry' : 'entries'}</div></div>
       <div class="kpi"><div class="l">Paid in cash</div><div class="v">${fmt(cash)}</div><div class="s">out of the cash drawer</div></div>
@@ -2026,18 +2030,18 @@ function renderClosing(el) {
   const line = (label, value, opts = {}) => `<div class="cl-line ${opts.cls || ''}"><span>${label}${opts.sub ? `<small>${opts.sub}</small>` : ''}</span><b ${opts.key ? `data-clv="${opts.key}"` : ''}>${value}</b></div>`;
   const slipNames = [...new Set(c.history.flatMap((h) => (h.slips || []).map((x) => x.label)).filter(Boolean))];
   el.innerHTML = `
-    <div class="screen-head"><h1>Shift closing</h1><span class="muted">${esc(rdt(new Date(c.from)))} → ${c.toSet || c.editId ? esc(rdt(new Date(c.to))) : 'now'}</span></div>
+    <div class="screen-head"><h1>Shift closing</h1><span class="muted">${!c.editId && c.fromSet && c.toSet && c.pick ? esc(mdRangeText(c)) : `${esc(rdt(new Date(c.from)))} → ${c.toSet || c.editId ? esc(rdt(new Date(c.to))) : 'now'}`}</span></div>
     ${c.editId ? `<div class="cl-edit"><b>Editing the closing of ${esc(fmtDate(c.toIso))} ${esc(fmtTime(c.toIso))}</b><span>Sales and expenses are worked out again from the POS. Change anything, then press <b>Save changes</b>.</span><button type="button" class="btn" data-act="clEditCancel">Cancel editing</button></div>` : ''}
     ${c.ready ? '' : '<div class="error" style="margin-bottom:12px">Shift closing needs a one-time database update: run supabase/migrations/008_shift_closings.sql in Supabase. You can still work it out and print it, but it won’t be saved.</div>'}
     ${s.unpaidCount ? `<div class="cl-warn">${s.unpaidCount} bill${s.unpaidCount > 1 ? 's are' : ' is'} still unpaid (${fmt(s.unpaid)}) — not counted in sales. Take payment in Orders first, then close.</div>` : ''}
     <div class="row wrap" style="margin-bottom:14px">
-      <label class="field ex-date">Shift started<input type="datetime-local" data-clr="from" value="${esc(c.from)}" ${owner ? '' : 'disabled'}></label>
-      <label class="field ex-date">Shift ends<input type="datetime-local" data-clr="to" value="${esc(c.to)}" ${owner ? '' : 'disabled'}></label>
-      ${owner && !c.editId && (c.fromSet || c.toSet) ? '<button type="button" class="btn" data-act="clResetRange">Back to: since last closing → now</button>' : ''}
+      ${owner && !c.editId ? `<button type="button" class="pill ${c.fromSet || c.toSet ? '' : 'on'}" data-act="clResetRange">This shift (since last closing → now)</button>
+      <button type="button" class="pill ${c.pick || c.fromSet || c.toSet ? 'on' : ''}" data-act="clPick">Custom</button>` : ''}
       <label class="field ex-date">Shift / name<input data-cl="shift_name" value="${esc(f.shift_name)}" placeholder="e.g. Morning, Night, Ali’s shift"></label>
       <span class="grow"></span>
       <button type="button" class="btn" data-act="clReload">Refresh numbers</button>
     </div>
+    ${owner && !c.editId && (c.pick || c.fromSet || c.toSet) ? `<div class="panel md-panel">${monthDayPicker(c, 'cl')}${mdDateBoxes('cl', c)}</div>` : ''}
     <div class="cl-grid">
       <div class="panel cl-sheet">
         <h2>Sales <span class="muted small">· ${s.orders} paid orders · from the POS</span></h2>
@@ -3394,7 +3398,7 @@ const ACT = {
       toast(`Done — ${S.inv.stock.length} stock items, ${new Set(rows.map((r) => r.menu_item_id + '|' + r.option_key)).size} recipes loaded`);
     });
   },
-  exPreset: (d) => { const r = presetRange(d.v); Object.assign(S.ex, { preset: d.v, from: toLocalInput(r[0]), to: toLocalInput(r[1]), loaded: false }); renderScreen(); },
+  exPreset: (d) => { if (d.v === 'custom') { S.ex.preset = 'custom'; renderScreen(); return; } const r = presetRange(d.v); Object.assign(S.ex, { preset: d.v, from: toLocalInput(r[0]), to: toLocalInput(r[1]), pm: '', pd: '', loaded: false }); renderScreen(); },
   exType: (d) => { S.ex.form.type = d.v; renderScreen(); },
   exMethod: (d) => { S.ex.form.method = d.v; renderScreen(); },
   exLaterPay: (d) => { S.ex.payId = d.id ? Number(d.id) : null; renderScreen(); },
@@ -3418,7 +3422,8 @@ const ACT = {
     run(async () => { await api.deleteExpense(Number(d.id)); S.ex.list = S.ex.list.filter((e) => e.id !== Number(d.id)); S.ex.later = (S.ex.later || []).filter((e) => e.id !== Number(d.id)); if (S.ex.editId === Number(d.id)) { S.ex.editId = null; S.ex.form = exBlankForm(); } renderScreen(); toast('Expense deleted'); });
   },
   clReload: () => run(async () => { await clLoad(true); renderScreen(); toast('Numbers refreshed'); }),
-  clResetRange: () => { Object.assign(S.cl, { fromSet: false, toSet: false, loaded: false }); renderScreen(); },
+  clResetRange: () => { Object.assign(S.cl, { fromSet: false, toSet: false, pick: false, pm: '', pd: '', loaded: false }); renderScreen(); },
+  clPick: () => { S.cl.pick = true; renderScreen(); },
   clSlipAdd: () => { S.cl.f.slips.push({ label: '', amount: '' }); clDraftSave(); renderScreen(); const l = document.querySelectorAll('#screen [data-cls][data-k=label]'); l[l.length - 1]?.focus(); },
   clSlipDel: (d) => { S.cl.f.slips.splice(Number(d.i), 1); clDraftSave(); renderScreen(); },
   clPrint: () => run(async () => { printHtml(await clSlip({ ...clRecord(), shift_to: S.cl.toSet ? new Date(S.cl.to).toISOString() : new Date().toISOString() })); }),
@@ -3684,13 +3689,14 @@ document.addEventListener('change', (e) => {
   if (t.dataset.exr && S.ex) { if (t.value) { S.ex[t.dataset.exr] = t.value; S.ex.preset = 'custom'; S.ex.loaded = false; renderScreen(); } return; }
   if (t.dataset.excat !== undefined && S.ex) { S.ex.cat = t.value; renderScreen(); return; }
   if (t.dataset.rc && S.rc) { S.rc[t.dataset.rc] = t.value; S.rc.preset = 'custom'; S.rc.result = null; renderScreen(); return; }
-  if (t.dataset.rcd && S.rc) {
+  if (t.dataset.mdd && mdState(t.dataset.t)) {
     if (!t.value) return;
-    const other = rcDateVal(t.dataset.rcd === 'from' ? 'to' : 'from');
-    let a = t.dataset.rcd === 'from' ? t.value : other, b = t.dataset.rcd === 'from' ? other : t.value;
+    const st = mdState(t.dataset.t), isFrom = t.dataset.mdd === 'from';
+    const other = mdYmd(isFrom ? st.to : st.from, isFrom);
+    let a = isFrom ? t.value : other, b = isFrom ? other : t.value;
     if (a > b) [a, b] = [b, a];
-    S.rc.pm = ''; S.rc.pd = '';
-    mdApply('rc', a, b); return;
+    st.pm = ''; st.pd = '';
+    mdApply(t.dataset.t, a, b); return;
   }
   if (t.dataset.dc) { S.dash['d' + t.dataset.dc] = t.value; return; }
   if (t.dataset.rcf && S.rc) { S.rc.f[t.dataset.rcf] = t.value; S.rc.result = null; renderScreen(); return; }
