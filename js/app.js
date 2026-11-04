@@ -210,7 +210,7 @@ async function loadAll() {
 }
 
 async function refreshOrders() {
-  const from = startOfDay();
+  const from = businessDayStart(); // café day runs past midnight (open till 1 AM)
   const to = new Date(from.getTime() + 864e5);
   const [open, today, later] = await Promise.all([api.openOrders(), api.ordersBetween(from.toISOString(), to.toISOString()), api.payLaterOrders().catch(() => [])]);
   S.open = open;
@@ -2494,7 +2494,7 @@ function renderDelivery(el) {
 // =====================================================================
 async function loadReport() {
   const days = { today: 1, week: 7, month: 30 }[S.rep.range] || 1;
-  const to = new Date(startOfDay().getTime() + 864e5);
+  const to = new Date(businessDayStart().getTime() + 864e5);
   const from = new Date(to.getTime() - days * 864e5);
   S.rep.orders = await api.ordersBetween(from.toISOString(), to.toISOString());
   S.rep.loaded = true;
@@ -3066,7 +3066,7 @@ async function printAfterSave(o, { kot, onlyNew, receipt }) {
 async function printZ() {
   const logo = await logoImg();
   let exp = [];
-  try { const a = startOfDay(); exp = await api.expensesBetween(a.toISOString(), new Date(a.getTime() + 864e5).toISOString()); } catch { exp = []; }
+  try { const a = businessDayStart(); exp = await api.expensesBetween(a.toISOString(), new Date(a.getTime() + 864e5).toISOString()); } catch { exp = []; }
   const cashExp = exp.filter((e) => e.method === 'Cash').reduce((a, e) => a + Number(e.amount), 0);
   const allExp = exp.reduce((a, e) => a + Number(e.amount), 0);
   const r = summarize(S.today);
