@@ -5,6 +5,16 @@
   'use strict';
   if (window.__pkTime) return; window.__pkTime = true;
   var OFF = 5 * 3600 * 1000, N = Date, P = N.prototype, TZ = 'Asia/Karachi';
+  // If this computer's clock is wrong (wrong date/time), the POS uses the server's clock instead.
+  // skew = server time − this computer's time; worked out by the app after sign-in and kept for the next load.
+  var KEY = 'kafeo-clock-skew', skew = 0;
+  try { skew = Number(localStorage.getItem(KEY)) || 0; } catch (e) { skew = 0; }
+  function now() { return N.now() + skew; }
+  window.__pkClock = {
+    nativeNow: function () { return N.now(); },
+    skew: function () { return skew; },
+    setSkew: function (ms) { skew = Math.abs(ms) < 2000 ? 0 : Math.round(ms); try { localStorage.setItem(KEY, String(skew)); } catch (e) { /* ignore */ } }
+  };
   function sh(t) { return new N(t + OFF); }
   ['FullYear', 'Month', 'Date', 'Day', 'Hours', 'Minutes', 'Seconds', 'Milliseconds'].forEach(function (k) {
     var g = P['getUTC' + k];
@@ -26,10 +36,10 @@
     if (a.length >= 2) t = N.UTC.apply(null, a) - OFF;
     else if (a.length === 1 && typeof a[0] === 'string' && LOCAL_ISO.test(a[0].trim())) t = N.parse(a[0].trim() + 'Z') - OFF;
     else if (a.length === 1) t = new N(a[0]).getTime();
-    else t = N.now();
+    else t = now();
     return new N(t);
   }
   PKDate.prototype = P;
-  PKDate.now = N.now; PKDate.parse = N.parse; PKDate.UTC = N.UTC;
+  PKDate.now = now; PKDate.parse = N.parse; PKDate.UTC = N.UTC;
   window.Date = PKDate;
 })();

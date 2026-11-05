@@ -128,6 +128,8 @@ export function createSupabaseApi(url, key) {
       if (!rows.length) throw new Error('Only the owner can edit a closing');
       return rows[0];
     },
+    // The database server's clock (correct even when this computer's clock is wrong).
+    async serverNow() { const { data, error } = await sb.rpc('server_now'); if (error) throw error; return new Date(data).getTime(); },
     async deleteClosing(id) { must(await sb.from('shift_closings').delete().eq('id', id)); },
     async listMoves(limit = 300) { return must(await sb.from('stock_moves').select('*').order('created_at', { ascending: false }).limit(limit)); },
 

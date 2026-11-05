@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.02-1849';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.02-1849';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.02-1849';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.05-1854';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.05-1854';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.05-1854';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.11.02-1849';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.02-1849';
-import { pdfBlob } from './pdf.js?v=2026.11.02-1849';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.02-1849';
+} from './logic.js?v=2026.11.05-1854';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.05-1854';
+import { pdfBlob } from './pdf.js?v=2026.11.05-1854';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.05-1854';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.11.02-1849')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.11.05-1854')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -185,9 +185,35 @@ function renderNoProfile() {
 }
 
 let unsub = null;
+// ---------- correct time ----------
+// A counter PC with the wrong date showed 0 sales ("today" was the wrong day). Take the time from the
+// database server instead; re-check every 10 minutes.
+async function syncClock() {
+  const ck = window.__pkClock; if (!ck || !api.serverNow) return;
+  try {
+    const t0 = ck.nativeNow(), server = await api.serverNow(), t1 = ck.nativeNow();
+    if (!server || t1 - t0 > 10000) return;          // demo mode, or too slow to be accurate
+    const before = ck.skew();
+    ck.setSkew(server - (t0 + t1) / 2);
+    S.clockOff = ck.skew();
+    if (Math.abs(ck.skew() - before) > 60000 && S.me?.profile) { await refreshOrders().catch(() => {}); renderScreen(); }
+    renderClockWarn();
+  } catch (e) { console.warn('Clock check failed', e.message); }
+}
+function renderClockWarn() {
+  const off = S.clockOff || 0, el = $('#clock-warn');
+  if (!el) return;
+  if (Math.abs(off) < 120000) { el.className = 'hidden'; el.innerHTML = ''; return; }
+  const mins = Math.round(Math.abs(off) / 60000), txt = mins >= 1440 ? `${Math.round(mins / 1440)} day${Math.round(mins / 1440) === 1 ? '' : 's'}` : mins >= 60 ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? '' : 's'}` : `${mins} min`;
+  el.className = 'clock-warn';
+  el.innerHTML = `⏰ This computer’s clock is <b>${off > 0 ? 'behind' : 'ahead'} by ${txt}</b>. The POS is using the correct Pakistan time (${new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}), so sales are right — but please fix the computer’s date &amp; time.`;
+}
+setInterval(() => { if (S.me?.profile) syncClock(); }, 600000);
+
 async function startApp() {
   if (!S.me.profile || !S.me.profile.active) return renderNoProfile();
   $('#app').innerHTML = '<div class="boot">Loading menu and orders…</div>';
+  await syncClock();
   await run(loadAll);
   S.cat = S.cat || S.menu.categories[0]?.id || null;
   S.mcat = S.mcat || S.cat;
@@ -324,6 +350,7 @@ function renderShell() {
     <div class="main">
       ${LIVE ? '' : '<div class="demo-bar">DEMO MODE — data stays in this browser. Connect the database to go live (see README).</div>'}
       <div id="web-alert"></div>
+      <div id="clock-warn" class="hidden"></div>
       <div id="notify-bar"></div>
       <div id="screen"></div>
     </div>
@@ -337,6 +364,7 @@ function renderShell() {
     if (S.route === 'closing' && kind === 'expense') clRefreshLive();
   });
   renderLiveDot();
+  renderClockWarn();
   renderScreen();
   renderBillsBadge();
   renderInvBadge();

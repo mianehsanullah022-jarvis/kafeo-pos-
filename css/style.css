@@ -725,3 +725,4 @@ a.tool { text-decoration: none; }
 @media (max-width: 640px) { .md-months { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .md-panel { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .md-boxes { max-width: 520px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.clock-warn { margin: 0 0 10px; padding: 10px 14px; border-radius: 12px; background: #fdecea; color: #8a1f11; border: 1px solid #f3b9b0; font-weight: 600; font-size: 14px; }
