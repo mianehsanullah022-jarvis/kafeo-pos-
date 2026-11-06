@@ -84,6 +84,14 @@ export function createSupabaseApi(url, key) {
     async updateIfPending(id, patch) {
       return must(await sb.from('orders').update(patch).eq('id', id).eq('status', 'pending').select().maybeSingle());
     },
+    // Table Talk waiter calls (QR at the table) — open ones from the last 6 hours.
+    async openCalls() {
+      const since = new Date(Date.now() - 6 * 36e5).toISOString();
+      return must(await sb.from('table_calls').select('*').eq('status', 'open').gte('created_at', since).order('created_at', { ascending: true }));
+    },
+    async finishCall(id, by) {
+      return must(await sb.from('table_calls').update({ status: 'done', done_by: by || '', done_at: new Date().toISOString() }).eq('id', id).eq('status', 'open').select().maybeSingle());
+    },
     async deleteOrder(id) {
       const rows = must(await sb.from('orders').delete().eq('id', id).select('id'));
       if (!rows.length) throw new Error('Only the owner can delete orders');
@@ -153,6 +161,7 @@ export function createSupabaseApi(url, key) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, () => cb('stock'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => cb('expenses'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_closings' }, () => cb('closings'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'table_calls' }, () => cb('calls'))
         .subscribe((status) => cb('status', status));
       return () => sb.removeChannel(ch);
     }

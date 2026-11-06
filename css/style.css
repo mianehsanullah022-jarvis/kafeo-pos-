@@ -594,6 +594,14 @@ a.tool { text-decoration: none; }
 .web-alert .web-bell { font-size: 24px; }
 @keyframes webPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(31, 111, 92, .45); } 50% { box-shadow: 0 0 0 8px rgba(31, 111, 92, 0); } }
 @media (prefers-reduced-motion: reduce) { .web-alert > button { animation: none; } }
+/* Table Talk waiter calls */
+.call-alert { padding: 10px 16px 0; display: grid; gap: 8px; }
+.call-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid #b5651d;
+  background: #fdf0e2; color: #4a2a0c; font-size: 16px; animation: callPulse 1.6s ease-in-out infinite; }
+.call-row .grow { flex: 1; }
+.call-row .call-bell { font-size: 22px; }
+@keyframes callPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(181, 101, 29, .45); } 50% { box-shadow: 0 0 0 8px rgba(181, 101, 29, 0); } }
+@media (prefers-reduced-motion: reduce) { .call-row { animation: none; } }
 .web-card { border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 14px; display: grid; gap: 8px; }
 .web-card.warn { border-color: #d39b2a; background: #fff8e8; }
 .web-flags { background: #fff1cc; border: 1px solid #e3b44a; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #5c4100; }

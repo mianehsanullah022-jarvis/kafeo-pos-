@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.05-1854';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.05-1854';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.05-1854';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.07-0030';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.07-0030';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.07-0030';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.11.05-1854';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.05-1854';
-import { pdfBlob } from './pdf.js?v=2026.11.05-1854';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.05-1854';
+} from './logic.js?v=2026.11.07-0030';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.07-0030';
+import { pdfBlob } from './pdf.js?v=2026.11.07-0030';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.07-0030';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.11.05-1854')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.11.07-0030')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -111,6 +111,7 @@ const ROUTES = [
 const S = {
   me: null, menu: { categories: [], items: [] }, settings: { ...DEFAULT_SETTINGS }, riders: [], staff: [],
   open: [], today: [], route: 'order', live: 'connecting', seenNew: null, busy: false,
+  calls: [], seenCalls: new Set(),   // Table Talk waiter calls (QR at the table)
   // order screen
   cat: null, q: '', cart: [], type: 'dine', table: '', taker: '', phone: '', custName: '', address: '', notes: '',
   discount: null, serviceOn: true, feeOverride: null, customer: null, editing: null,
@@ -232,6 +233,8 @@ async function loadAll() {
   S.settings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
   S.riders = riders;
   await refreshOrders();
+  await refreshCalls();
+  S.seenCalls = new Set(S.calls.map((c) => c.id));
   await loadInventory();
 }
 
@@ -261,6 +264,7 @@ function onLive(kind, payload) {
   if (kind === 'stock') return run(async () => { await loadInventory(); S.inv.movesLoaded = false; if (S.route === 'inventory' && !S.m) renderScreen(); else if (S.route === 'dashboard') dashRedraw(); else rcLiveRefresh(); });
   if (kind === 'expenses') { if (S.ex) S.ex.loaded = false; if (S.route === 'dashboard') refreshDash(); else if (S.route === 'closing') clRefreshLive(); else rcLiveRefresh(); return; }
   if (kind === 'closings') { if (S.cl && S.route === 'closing') clRefreshLive(); else if (S.cl) S.cl.loaded = false; return; }
+  if (kind === 'calls') return run(async () => { await refreshCalls(); checkNewCalls(); });
   if (kind === 'orders' || kind === 'customers') scheduleRefresh();
 }
 function scheduleRefresh() {
@@ -268,6 +272,7 @@ function scheduleRefresh() {
   refreshTimer = setTimeout(() => run(async () => {
     await refreshOrders();
     checkNewOrders();
+    await refreshCalls(); checkNewCalls();
     renderBillsBadge();
     if (S.m?.kind === 'web' && S.m.sig !== webPending().map((o) => o.id).join()) renderWebOrders();
     if (S.route === 'order') { /* summary unaffected */ }
@@ -287,11 +292,44 @@ function checkNewOrders() {
   web.forEach((o) => S.seenNew.add(o.id));
   if (web.length && canSee('orders')) {
     webChime();
-    toast(`New website order #${web[0].id}${web.length > 1 ? ` (+${web.length - 1} more)` : ''} — tap to review`, { action: { label: 'Review', fn: () => openWebOrders() } });
+    toast(`New ${webLabel(web[0])} #${web[0].id}${web.length > 1 ? ` (+${web.length - 1} more)` : ''} — tap to review`, { action: { label: 'Review', fn: () => openWebOrders() } });
     web.forEach((o) => notifyOrder(o));
   }
   renderWebAlert();
 }
+const isTableQr = (o) => o?.meta?.channel === 'table';
+const webLabel = (o) => (isTableQr(o) ? `Table ${o.table_no} QR order` : 'website order');
+
+// ---------- Table Talk waiter calls ----------
+// Customers tap "Call waiter", "Bring water"… on the QR page. Each call shows here with a
+// sound, and repeats the sound every 20 seconds until someone taps Done.
+async function refreshCalls() {
+  try { S.calls = (await api.openCalls?.()) || []; } catch (e) { console.warn('Waiter calls not loaded:', e.message); S.calls = []; }
+}
+function checkNewCalls() {
+  const fresh = S.calls.filter((c) => !S.seenCalls.has(c.id));
+  fresh.forEach((c) => S.seenCalls.add(c.id));
+  if (fresh.length && canSee('orders')) {
+    callChime();
+    toast(`🙋 Table ${fresh[0].table_no}: ${fresh[0].request}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`);
+  }
+  renderCallAlert();
+}
+function renderCallAlert() {
+  const el = $('#call-alert');
+  if (!el) return;
+  const list = canSee('orders') ? S.calls : [];
+  if (!list.length) { el.innerHTML = ''; el.className = ''; return; }
+  el.className = 'call-alert';
+  el.innerHTML = list.map((c) => `<div class="call-row">
+      <span class="call-bell" aria-hidden="true">🙋</span>
+      <span><b>Table ${esc(c.table_no)}</b> · ${esc(c.request)} · <span class="muted">${minutesSince(c.created_at)} min ago</span></span>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-primary btn-sm" data-act="callDone" data-id="${c.id}">Done ✓</button>
+    </div>`).join('');
+}
+setInterval(() => { if (S.me?.profile && canSee('orders') && S.calls.length) { callChime(); renderCallAlert(); } }, 20000);
+
 // One shared sound player; browsers only allow sound after the first tap on the page.
 let audioCtx = null;
 function audio() {
@@ -312,6 +350,7 @@ function tone(freqs, gap = 0.22, len = 0.18, vol = 0.25) {
 }
 function beep() { tone([880, 880]); }
 function webChime() { tone([988, 1319, 1568, 1319, 1568], 0.16, 0.22, 0.32); }
+function callChime() { tone([1175, 880, 1175, 880], 0.18, 0.2, 0.3); }
 // Keep reminding the counter until every website order is accepted or rejected.
 setInterval(() => { if (S.me?.profile && canSee('orders') && webPending().length) webChime(); }, 20000);
 function rerenderIf(routes) { if (routes.includes(S.route)) renderScreen(); }
@@ -350,6 +389,7 @@ function renderShell() {
     <div class="main">
       ${LIVE ? '' : '<div class="demo-bar">DEMO MODE — data stays in this browser. Connect the database to go live (see README).</div>'}
       <div id="web-alert"></div>
+      <div id="call-alert"></div>
       <div id="clock-warn" class="hidden"></div>
       <div id="notify-bar"></div>
       <div id="screen"></div>
@@ -369,6 +409,7 @@ function renderShell() {
   renderBillsBadge();
   renderInvBadge();
   renderWebAlert();
+  renderCallAlert();
   renderNotifyBar();
 }
 function renderLiveDot() {
@@ -390,9 +431,9 @@ const notifyState = () => (!NOTIFY_OK ? 'unsupported' : Notification.permission)
 async function notifyOrder(o) {
   if (notifyState() !== 'granted') return;
   const items = o.items.map((l) => `${l.qty}× ${l.name}`).join(', ');
-  const title = `🔔 New website order #${o.id} · ${fmt(o.total)}`;
+  const title = `🔔 New ${webLabel(o)} #${o.id} · ${fmt(o.total)}`;
   const opts = {
-    body: `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + o.customer_name : ''} · ${o.customer_phone}\n${items}`.slice(0, 300),
+    body: `${isTableQr(o) ? `Table ${o.table_no} · ordered from the table QR` : `${TYPE_LABEL[o.type]}${o.customer_name ? ' · ' + o.customer_name : ''} · ${o.customer_phone}`}\n${items}`.slice(0, 300),
     tag: 'kafeo-web-' + o.id, renotify: true, requireInteraction: true, silent: false,
     icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231E1714'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='36' font-weight='700' text-anchor='middle' fill='%23E9D3A8'%3EK%3C/text%3E%3C/svg%3E",
     data: { id: o.id }
@@ -434,7 +475,7 @@ function renderWebAlert() {
   el.className = 'web-alert';
   el.innerHTML = `<button type="button" data-act="webOpen">
       <span class="web-bell" aria-hidden="true">🔔</span>
-      <span><b>${list.length} new website order${list.length > 1 ? 's' : ''}</b> · ${fmt(total)} · oldest ${minutesSince(list[0].created_at)} min ago</span>
+      <span><b>${list.length} new ${list.every(isTableQr) ? 'table QR' : list.some(isTableQr) ? 'online' : 'website'} order${list.length > 1 ? 's' : ''}</b> · ${fmt(total)} · oldest ${minutesSince(list[0].created_at)} min ago</span>
       <span class="grow"></span><span class="btn btn-primary">Review &amp; accept</span>
     </button>`;
 }
@@ -462,11 +503,11 @@ function renderWebOrders() {
       const flags = m.flags || [];
       const fee = o.type === 'deliv' ? webFeeFor(o) : 0;
       return `<article class="web-card ${flags.length ? 'warn' : ''}">
-        <div class="row wrap"><b class="bill-where">#${o.id} · ${TYPE_LABEL[o.type]}</b><span class="tag web">${esc(m.web_ref || 'Website')}</span>
+        <div class="row wrap"><b class="bill-where">#${o.id} · ${TYPE_LABEL[o.type]}${isTableQr(o) ? ` · Table ${esc(o.table_no)}` : ''}</b><span class="tag web">${isTableQr(o) ? 'Table QR' : esc(m.web_ref || 'Website')}</span>
           <span class="grow"></span><span class="muted small">${minutesSince(o.created_at)} min ago</span></div>
-        <div class="row wrap small"><b>${esc(o.customer_name || 'No name')}</b>
+        ${isTableQr(o) ? `<div class="row wrap small"><b>🍽️ Table ${esc(o.table_no)}</b> · ordered from the QR at the table — check with the table if anything is unclear</div>` : `<div class="row wrap small"><b>${esc(o.customer_name || 'No name')}</b>
           <a class="btn btn-sm" href="tel:${esc(o.customer_phone)}">📞 ${esc(o.customer_phone)}</a>
-          <a class="btn btn-sm" target="_blank" rel="noopener" href="${esc(waLink(o.customer_phone, `Assalam o Alaikum! KAFEO here about your website order ${m.web_ref || '#' + o.id}.`))}">WhatsApp</a></div>
+          <a class="btn btn-sm" target="_blank" rel="noopener" href="${esc(waLink(o.customer_phone, `Assalam o Alaikum! KAFEO here about your website order ${m.web_ref || '#' + o.id}.`))}">WhatsApp</a></div>`}
         ${o.type === 'deliv' ? `<div class="small">📍 ${esc(o.address || '(no address typed)')}${m.geo?.link ? ` · <a target="_blank" rel="noopener" href="${esc(m.geo.link)}">Open map pin</a>` : ''}${m.distance_km != null ? ` · ~${m.distance_km} km` : ''}</div>` : ''}
         ${m.pay_pref ? `<div class="small">💳 Customer will pay: <b>${esc(m.pay_pref)}</b>${m.delivery_note ? ` · Delivery: ${esc(m.delivery_note)}` : ''}</div>` : ''}
         <ul class="bill-items">${o.items.map((l) => `<li><span>${l.qty}× ${esc(l.name)}${l.note ? ` <em>${esc(l.note)}</em>` : ''}</span><span>${num(l.price * l.qty)}</span></li>`).join('')}</ul>
@@ -3234,6 +3275,11 @@ const ACT = {
   },
   print: (d) => run(async () => { const o = findOrder(Number(d.id)) || await api.getOrder(Number(d.id)); if (o) await printReceipt(o, { reprint: o.paid }); }),
   webOpen: () => openWebOrders(),
+  callDone: (d) => run(async () => {
+    const r = await api.finishCall(Number(d.id), S.me?.profile?.name);
+    await refreshCalls(); renderCallAlert();
+    toast(r ? `Table ${r.table_no}: done ✓` : 'Someone already handled this');
+  }),
   dashRange: (d) => { S.dash.range = d.v; S.dash.loaded = false; renderScreen(); },
   dashQuick: (d) => {
     const t = businessDayStart();

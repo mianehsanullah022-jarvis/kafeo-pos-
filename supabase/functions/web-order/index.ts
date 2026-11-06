@@ -33,6 +33,16 @@ const LIMIT_WINDOW_MIN = 15;
 const LIMIT_PER_PHONE = 4;
 const LIMIT_PER_IP = 10;
 
+// Table Talk: customers scan the QR on their table (channel "table").
+// Orders need no phone number — the table number says where to bring them.
+// Waiter calls ("kind": "call") go to the table_calls table and pop up on the POS.
+const CALLS: Record<string, string> = {
+  waiter: 'Call waiter', water: 'Bring water', bill: 'Bring the bill',
+  tissue: 'Tissues please', clean: 'Clean the table', cutlery: 'Extra cutlery'
+};
+const CALL_LIMIT_WINDOW_MIN = 10;
+const CALL_LIMIT_PER_IP = 8;
+
 const str = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
 function cleanPhone(raw: unknown) {
   let d = String(raw ?? '').replace(/\D/g, '');
@@ -60,12 +70,39 @@ Deno.serve(async (req) => {
   // Bots fill every field; people never see this one.
   if (str(body.website, 50)) return json(200, { ok: true, id: null });
 
+  const isTable = str(body.channel, 10) === 'table';
+  let tableNo = '';
+  if (isTable) {
+    tableNo = str(body.table, 3);
+    if (!/^\d{1,3}$/.test(tableNo) || Number(tableNo) < 1 || Number(tableNo) > 99) return json(400, { ok: false, error: 'Please pick your table number' });
+    tableNo = String(Number(tableNo));
+  }
+
+  // ---- Table Talk waiter call ----
+  if (isTable && str(body.kind, 10) === 'call') {
+    const request = CALLS[str(body.request, 20)];
+    if (!request) return json(400, { ok: false, error: 'Unknown request' });
+    const sbc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    const cip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+    const cipHash = await sha('kafeo|' + cip);
+    // Same request from the same table still waiting? Don't add it twice.
+    const open = await sbc.from('table_calls').select('id').eq('status', 'open').eq('table_no', tableNo).eq('request', request).limit(1);
+    if (open.data?.length) return json(200, { ok: true, id: open.data[0].id, duplicate: true });
+    const csince = new Date(Date.now() - CALL_LIMIT_WINDOW_MIN * 60000).toISOString();
+    const recent = await sbc.from('table_calls').select('id', { count: 'exact', head: true }).eq('ip', cipHash).gte('created_at', csince);
+    if ((recent.count ?? 0) >= CALL_LIMIT_PER_IP) return json(429, { ok: false, error: 'Our team is on the way — please wait a moment' });
+    const ci = await sbc.from('table_calls').insert({ table_no: tableNo, request, ip: cipHash }).select('id').single();
+    if (ci.error) { console.error('call insert failed', ci.error.message); return json(500, { ok: false, error: 'Could not send — please wave to our team' }); }
+    return json(200, { ok: true, id: ci.data.id });
+  }
+
   const ref = str(body.ref, 24).toUpperCase();
   if (!/^KF-[A-Z0-9]{4,16}$/.test(ref)) return json(400, { ok: false, error: 'Missing order reference' });
-  const type = TYPES[str(body.type, 20)];
+  const type = isTable ? 'dine' : TYPES[str(body.type, 20)];
   if (!type) return json(400, { ok: false, error: 'Choose delivery, takeaway or dine-in' });
-  const phone = cleanPhone(body.phone);
-  if (!/^03\d{9}$/.test(phone)) return json(400, { ok: false, error: 'Please enter a valid mobile number, like 0300 1234567' });
+  let phone = cleanPhone(body.phone);
+  if (isTable && !/^03\d{9}$/.test(phone)) phone = '';   // optional at the table
+  if (!isTable && !/^03\d{9}$/.test(phone)) return json(400, { ok: false, error: 'Please enter a valid mobile number, like 0300 1234567' });
   const name = str(body.name, 60);
   const address = str(body.address, 300);
   const note = str(body.note, 500);
@@ -102,7 +139,7 @@ Deno.serve(async (req) => {
   const ipHash = await sha('kafeo|' + ip);
   const since = new Date(Date.now() - LIMIT_WINDOW_MIN * 60000).toISOString();
   const [byPhone, byIp] = await Promise.all([
-    sb.from('orders').select('id', { count: 'exact', head: true }).eq('meta->>source', 'website').eq('customer_phone', phone).gte('created_at', since),
+    !phone ? Promise.resolve({ count: 0 }) : sb.from('orders').select('id', { count: 'exact', head: true }).eq('meta->>source', 'website').eq('customer_phone', phone).gte('created_at', since),
     sb.from('orders').select('id', { count: 'exact', head: true }).eq('meta->>source', 'website').eq('meta->>ip', ipHash).gte('created_at', since)
   ]);
   if ((byPhone.count ?? 0) >= LIMIT_PER_PHONE || (byIp.count ?? 0) >= LIMIT_PER_IP) {
@@ -118,19 +155,19 @@ Deno.serve(async (req) => {
   if (Number.isFinite(clientTotal) && Math.round(clientTotal) !== subtotal) flags.push(`Website showed total Rs ${Math.round(clientTotal)}, items add up to Rs ${subtotal}`);
 
   // Same rounding as the POS (computeBill: Math.round of the % of the subtotal).
-  const promo = webPromoOn();
+  const promo = !isTable && webPromoOn();   // the website offer is for website orders only
   const discount = promo ? Math.round(subtotal * WEB_PROMO.pct / 100) : 0;
   const discMeta = promo ? { scope: 'bill', type: 'pct', value: WEB_PROMO.pct, reason: WEB_PROMO.reason, bank: '' } : null;
   const clientDisc = Number(body.discount);
   if (Number.isFinite(clientDisc) && Math.round(clientDisc) !== discount) flags.push(`Website showed discount Rs ${Math.round(clientDisc)}, POS discount is Rs ${discount}`);
 
   const row = {
-    type, table_no: '', customer_phone: phone, customer_name: name, address: type === 'deliv' ? address : '',
+    type, table_no: tableNo, customer_phone: phone, customer_name: name, address: type === 'deliv' ? address : '',
     items, notes: note, subtotal, discount, discount_label: promo ? WEB_PROMO.reason : '', tax: 0, tax_rate: 0, service_charge: 0,
     delivery_fee: 0, round_off: 0, total: subtotal - discount, payment: '', paid: false, status: 'pending', reward: '',
     created_by: null,
     meta: {
-      source: 'website', web_ref: ref, by: 'Website', discount: discMeta, serviceOn: false, inclusive: false,
+      source: 'website', channel: isTable ? 'table' : 'website', web_ref: ref, by: isTable ? `Table ${tableNo} (QR)` : 'Website', discount: discMeta, serviceOn: false, inclusive: false,
       pay_pref: payPref, delivery_note: type === 'deliv' ? deliveryNote : '', geo: type === 'deliv' ? geo : null,
       distance_km: type === 'deliv' && Number.isFinite(km) && km >= 0 && km < 100 ? Math.round(km * 10) / 10 : null,
       flags, ip: ipHash, placed_at: new Date().toISOString()
@@ -149,10 +186,10 @@ Deno.serve(async (req) => {
   // Optional WhatsApp alert to the owner (only if the secrets are set).
   const waPhone = Deno.env.get('CALLMEBOT_PHONE'), waKey = Deno.env.get('CALLMEBOT_APIKEY');
   if (waPhone && waKey) {
-    const label = { deliv: 'Delivery', take: 'Takeaway', dine: 'Dine-in' }[type];
+    const label = isTable ? `Table ${tableNo} (QR)` : { deliv: 'Delivery', take: 'Takeaway', dine: 'Dine-in' }[type];
     const text = `🔔 New website order #${ins.data.id} (${ref})\n${label} · Rs ${(subtotal - discount).toLocaleString('en-US')}${discount ? ` (${WEB_PROMO.pct}% off Rs ${subtotal.toLocaleString('en-US')})` : ''}\n` +
       lines.map((l) => `${l.qty}× ${l.name}`).join('\n') +
-      `\n${name || 'Customer'} · ${phone}` + (type === 'deliv' && address ? `\n${address}` : '') + (geo ? `\n${geo.link}` : '') +
+      (isTable ? '' : `\n${name || 'Customer'} · ${phone}`) + (type === 'deliv' && address ? `\n${address}` : '') + (geo ? `\n${geo.link}` : '') +
       (note ? `\nNote: ${note}` : '') + (flags.length ? `\n⚠️ Check on POS: ${flags.length} warning(s)` : '') + '\nAccept it on the POS.';
     const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(waPhone)}&text=${encodeURIComponent(text.slice(0, 1500))}&apikey=${encodeURIComponent(waKey)}`;
     const p = fetch(url).then((r) => r.text()).catch((e) => console.error('whatsapp alert failed', e));
