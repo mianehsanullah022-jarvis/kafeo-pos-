@@ -1,19 +1,19 @@
 // KAFEO POS — the app. Screens: Order, Kitchen, Delivery, Loyalty, Reports, Menu, Settings.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.07-0030';
-import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.07-0030';
-import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.07-0030';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_VERSION } from './config.js?v=2026.11.25-2138';
+import { createDemoApi, DEMO_EMAILS, DEMO_PASSWORD } from './api-demo.js?v=2026.11.25-2138';
+import { DEFAULT_SETTINGS } from './menu-seed.js?v=2026.11.25-2138';
 import {
   fmt, num, TYPE_LABEL, STATUS_LABEL, PAY_METHODS, PAY_LATER, EXP_METHODS, isPayLater, isDigital, taxRateFor, lineDiscount, computeBill, discountShare,
   cashSuggestions, bmsmReward, loyaltyAfterPayment, rewardReady, cleanPhone, phoneOk, waLink, summarize, incentives,
   minutesSince, startOfDay
-} from './logic.js?v=2026.11.07-0030';
-import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.07-0030';
-import { pdfBlob } from './pdf.js?v=2026.11.07-0030';
-import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.07-0030';
+} from './logic.js?v=2026.11.25-2138';
+import { REPORTS, REPORT_GROUPS, toHtml, toThermal, toCsv, toPdfDoc, dt as rdt } from './reports.js?v=2026.11.25-2138';
+import { pdfBlob } from './pdf.js?v=2026.11.25-2138';
+import { KAFEO_STOCK, KAFEO_RECIPES, DRINK_SIZES } from './kafeo-inventory.js?v=2026.11.25-2138';
 
 const LIVE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = LIVE
-  ? (await import('./api-supabase.js?v=2026.11.07-0030')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? (await import('./api-supabase.js?v=2026.11.25-2138')).createSupabaseApi(SUPABASE_URL, SUPABASE_ANON_KEY)
   : createDemoApi();
 
 const CAFE = { address: '97-Shadman-1, Shadman Chowk, Jail Road, Lahore', phone: '0304 2077720', web: 'kafeo.com.pk', insta: '@kafeo_official' };
@@ -1258,7 +1258,7 @@ function renderOrders(el) {
 // DASHBOARD (owner) — live "right now" status, sales with comparison, trend chart, breakdowns
 // Numbers use the same rules as Reports: sales = paid, not-cancelled orders, after discounts.
 // =====================================================================
-const DASH_RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days'], ['month', 'This month'], ['last90', 'Last 3 months'], ['custom', 'Custom']];
+const DASH_RANGES = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last7', 'Last 7 days'], ['month', 'This month'], ['last30', 'Last 30 days'], ['last90', 'Last 3 months'], ['year', 'This year'], ['custom', 'Custom']];
 const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const DAY = 864e5;
 // Month + day picker made only of buttons (no time, no phone date pop-up), so the live refresh can't close it.
@@ -1327,6 +1327,16 @@ function dashRanges(range) {
   if (range === 'last7') return { from: add(day, -6 * DAY), to: add(day, DAY), pFrom: add(day, -13 * DAY), pTo: add(now, -7 * DAY), cmp: 'the 7 days before', days: 7 };
   if (range === 'last30') return { from: add(day, -29 * DAY), to: add(day, DAY), pFrom: add(day, -59 * DAY), pTo: add(now, -30 * DAY), cmp: 'the 30 days before', days: 30 };
   if (range === 'last90') return { from: add(day, -89 * DAY), to: add(day, DAY), pFrom: add(day, -179 * DAY), pTo: add(now, -90 * DAY), cmp: 'the 3 months before', days: 90 };
+  if (range === 'week') {          // Monday to Sunday, compared with last week up to the same time
+    const [a, b] = presetRange('week');
+    return { from: a, to: b, pFrom: add(a, -7 * DAY), pTo: add(now, -7 * DAY), cmp: 'last week to the same time', chartCmp: 'Last week', days: 7 };
+  }
+  if (range === 'year') {          // 1 January to 31 December, compared with last year up to the same day
+    const h = Number(S.settings.day_start_hour ?? 6);
+    const a = new Date(day.getFullYear(), 0, 1, h), b = new Date(day.getFullYear() + 1, 0, 1, h);
+    const pa = new Date(day.getFullYear() - 1, 0, 1, h);
+    return { from: a, to: b, pFrom: pa, pTo: new Date(pa.getTime() + (now - a)), cmp: 'last year to the same day', chartCmp: 'Last year', days: Math.round((b - a) / DAY) };
+  }
   if (range === 'custom') {
     // Business days: a date runs from the day-start hour (6 AM) to 6 AM the next morning.
     const h = Number(S.settings.day_start_hour ?? 6);
@@ -1348,15 +1358,18 @@ async function loadDash() {
   const safe = (p) => p.catch((e) => { console.warn('Dashboard:', e.message); return null; });
   // The totals compare like with like (e.g. today so far vs yesterday up to the same time);
   // the chart's comparison line shows the whole earlier day.
-  const [orders, prevChart, exp, pexp] = await Promise.all([
+  const [orders, prevChart, exp, pexp, allCl] = await Promise.all([
     api.ordersBetween(r.from.toISOString(), r.to.toISOString()),
     api.ordersBetween(r.pFrom.toISOString(), (r.chartTo || r.pTo).toISOString()),
     safe(api.expensesBetween(r.from.toISOString(), r.to.toISOString())),
-    safe(api.expensesBetween(r.pFrom.toISOString(), r.pTo.toISOString()))
+    safe(api.expensesBetween(r.pFrom.toISOString(), r.pTo.toISOString())),
+    safe(api.listClosings(r.days > 40 ? 1500 : 200))
   ]);
+  // shift closings that ended inside this period
+  const closings = allCl ? allCl.filter((c) => new Date(c.shift_to) >= r.from && new Date(c.shift_to) < r.to) : null;
   const prev = r.chartTo ? prevChart.filter((o) => new Date(o.created_at) < r.pTo) : prevChart;
   if (key !== [d.range, d.cfrom, d.cto].join('|')) { d.again = true; return; }   // period changed while loading — load the new one
-  Object.assign(d, { orders, prev, prevChart, exp, pexp, r, loaded: true, at: new Date() });
+  Object.assign(d, { orders, prev, prevChart, exp, pexp, closings, r, loaded: true, at: new Date() });
 }
 const isWeb = (o) => o.meta?.source === 'website';
 const isSale = (o) => o.paid && o.status !== 'cancelled';
@@ -1579,8 +1592,93 @@ function renderDashboard(el) {
         <td>${dashStatus(o)}</td>
         <td class="num">${fmt(o.total)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No orders in this period.</td></tr>'}
       </tbody></table></div>
-    </section>`;
+    </section>
+    ${dashTopSelling(sales, r)}
+    <div class="cols dash-cols dash-two">
+      ${dashExpenses(d.exp)}
+      ${dashClosings(d.closings)}
+    </div>`;
   drawDashTrend(b);
+}
+// Every item sold in the period, best first (by how many were sold), with sales and share.
+function dashTopSelling(sales) {
+  const map = {};
+  sales.forEach((o) => (o.items || []).forEach((l) => {
+    const mi = S.menu.items.find((i) => i.id === l.id);
+    const it = map[l.name] || (map[l.name] = { name: l.name, cat: S.menu.categories.find((c) => c.id === mi?.category_id)?.label || 'Other', qty: 0, value: 0 });
+    it.qty += Number(l.qty); it.value += Number(l.price) * Number(l.qty);
+  }));
+  const by = S.dash.topBy || 'qty';
+  const all = Object.values(map).sort((a, b) => (b[by] - a[by]) || (b.value - a.value));
+  const showAll = S.dash.topAll;
+  const list = showAll ? all : all.slice(0, 15);
+  const totalQty = sumBy(all, (x) => x.qty), totalVal = sumBy(all, (x) => x.value);
+  const max = Math.max(1, ...all.map((x) => x[by]));
+  return `<section class="panel">
+    <div class="row wrap"><h2 style="margin:0">Top selling items</h2><span class="grow"></span>
+      <div class="seg mini" role="group" aria-label="Sort by">
+        <button type="button" class="${by === 'qty' ? 'on' : ''}" aria-pressed="${by === 'qty'}" data-act="dashTopBy" data-v="qty">Most sold</button>
+        <button type="button" class="${by === 'value' ? 'on' : ''}" aria-pressed="${by === 'value'}" data-act="dashTopBy" data-v="value">Most money</button></div></div>
+    <div class="muted small" style="margin:4px 0 10px">${all.length ? `${num(all.length)} different items · ${num(totalQty)} sold · ${fmt(totalVal)} (before bill discounts)` : 'Paid orders only'}</div>
+    ${all.length ? `<div class="tbl-wrap"><table class="tbl compact top-sell"><thead><tr><th style="width:44px">#</th><th>Item</th><th class="num">Sold</th><th class="num">Sales</th><th style="width:30%">Share</th></tr></thead><tbody>
+      ${list.map((x, i) => `<tr><td><span class="rank r${i < 3 ? i + 1 : 0}">${i + 1}</span></td><td><b>${esc(x.name)}</b><div class="muted small">${esc(x.cat)}</div></td>
+        <td class="num"><b>${num(x.qty)}</b></td><td class="num">${fmt(x.value)}</td>
+        <td><div class="ex-track"><i style="width:${Math.max(2, x[by] / max * 100)}%"></i></div><span class="muted small">${Math.round(x[by] / ((by === 'qty' ? totalQty : totalVal) || 1) * 100)}%</span></td></tr>`).join('')}
+    </tbody></table></div>
+    ${all.length > 15 ? `<button type="button" class="btn btn-sm" style="margin-top:10px" data-act="dashTopAll">${showAll ? 'Show top 15' : `Show all ${all.length} items`}</button>` : ''}`
+    : '<div class="muted">No paid orders in this period yet.</div>'}
+  </section>`;
+}
+function dashExpenses(exp) {
+  if (exp == null) return '<section class="panel"><h2>Expenses</h2><div class="muted">Expenses are not set up yet.</div></section>';
+  const total = sumBy(exp, (e) => e.amount);
+  const cash = sumBy(exp.filter((e) => e.method === 'Cash'), (e) => e.amount);
+  const cats = {};
+  exp.forEach((e) => { const k = e.type || 'Other'; cats[k] = (cats[k] || 0) + Number(e.amount); });
+  const rows = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const latest = [...exp].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 6);
+  const vendorOf = (d) => { const m = /^\[([^\]]+)\]\s*(.*)$/s.exec(d || ''); return m ? [m[1], m[2]] : ['', d || '']; };
+  return `<section class="panel">
+    <div class="row"><h2 style="margin:0">Expenses</h2><span class="grow"></span><a class="btn btn-sm" href="#expenses">Open expenses</a></div>
+    <div class="dash-mini">
+      <div><span>Total spent</span><b>${fmt(total)}</b></div>
+      <div><span>Cash</span><b>${fmt(cash)}</b></div>
+      <div><span>Card / bank</span><b>${fmt(total - cash)}</b></div>
+      <div><span>Entries</span><b>${num(exp.length)}</b></div>
+    </div>
+    ${rows.length ? `<div class="ex-bars" style="margin:12px 0">${rows.map(([k, v]) => `<div class="ex-bar"><div class="ex-bar-top"><span>${esc(k)}</span><b>${fmt(v)}</b></div>
+      <div class="ex-track"><i style="width:${Math.max(2, Math.round(v / (total || 1) * 100))}%"></i></div></div>`).join('')}</div>
+    <div class="lbl">Latest</div>
+    <div class="tbl-wrap"><table class="tbl compact"><tbody>${latest.map((e) => { const [v, n] = vendorOf(e.description); return `<tr>
+      <td class="small">${new Date(e.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}<br><span class="muted">${fmtTime(e.created_at)}</span></td>
+      <td><b>${esc(v || e.type)}</b><div class="muted small">${esc([v ? e.type : '', n].filter(Boolean).join(' · ') || '—')}</div></td>
+      <td class="num">${fmt(e.amount)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="muted" style="margin-top:10px">No expenses in this period.</div>'}
+  </section>`;
+}
+function dashClosings(cls) {
+  if (cls == null) return '<section class="panel"><h2>Shift closings</h2><div class="muted">Shift closing is not set up yet.</div></section>';
+  const list = [...cls].sort((a, b) => String(b.shift_to).localeCompare(String(a.shift_to)));
+  const t = (k) => sumBy(list, (c) => c[k]);
+  const diff = t('difference');
+  const short = list.filter((c) => Number(c.difference) < 0).length, over = list.filter((c) => Number(c.difference) > 0).length;
+  const diffTxt = (v) => (Math.abs(Number(v)) < 1 ? '<span class="tag ok" style="margin:0">Matched</span>'
+    : Number(v) < 0 ? `<span class="tag warn" style="margin:0">Short ${fmt(-v)}</span>` : `<span class="tag" style="margin:0">Extra ${fmt(v)}</span>`);
+  return `<section class="panel">
+    <div class="row"><h2 style="margin:0">Shift closings</h2><span class="grow"></span><a class="btn btn-sm" href="#closing">Open closing</a></div>
+    <div class="dash-mini">
+      <div><span>Closings</span><b>${num(list.length)}</b></div>
+      <div><span>Total sale</span><b>${fmt(t('total_sale'))}</b></div>
+      <div><span>Cash in till</span><b>${fmt(t('till_cash'))}</b></div>
+      <div><span>Short / extra</span><b style="color:${diff < -0.5 ? 'var(--warn)' : 'inherit'}">${diff < -0.5 ? '−' + fmt(-diff) : fmt(diff)}</b></div>
+    </div>
+    <div class="muted small" style="margin:8px 0">${list.length ? `${short} short · ${over} extra · ${list.length - short - over} matched` : ''}</div>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Shift</th><th class="num">Sale</th><th class="num">Expenses</th><th class="num">Till</th><th>Result</th></tr></thead><tbody>
+      ${list.slice(0, 10).map((c) => `<tr>
+        <td><b>${esc(c.shift_name || 'Shift')}</b><div class="muted small">${new Date(c.shift_to).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${fmtTime(c.shift_to)} · ${esc(c.by_name || '')}</div></td>
+        <td class="num">${fmt(c.total_sale)}</td><td class="num">${fmt(c.expenses)}</td><td class="num">${fmt(c.till_cash)}</td><td>${diffTxt(c.difference)}</td></tr>`).join('')}
+    </tbody></table></div>${list.length > 10 ? `<div class="muted small" style="margin-top:8px">Showing the latest 10 of ${list.length}.</div>` : ''}`
+    : '<div class="muted">No shift closed in this period.</div>'}
+  </section>`;
 }
 function dashStatus(o) {
   if (o.status === 'pending') return '<span class="tag web" style="margin:0">Waiting to accept</span>';
@@ -3280,6 +3378,8 @@ const ACT = {
     await refreshCalls(); renderCallAlert();
     toast(r ? `Table ${r.table_no}: done ✓` : 'Someone already handled this');
   }),
+  dashTopBy: (d) => { S.dash.topBy = d.v; renderScreen(); },
+  dashTopAll: () => { S.dash.topAll = !S.dash.topAll; renderScreen(); },
   dashRange: (d) => { S.dash.range = d.v; S.dash.loaded = false; renderScreen(); },
   dashQuick: (d) => {
     const t = businessDayStart();
